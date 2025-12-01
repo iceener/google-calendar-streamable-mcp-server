@@ -14,6 +14,9 @@ export interface ProviderRefreshConfig {
   clientId: string;
   clientSecret: string;
   accountsUrl: string;
+  /** Full token URL (preferred) or path relative to accountsUrl */
+  tokenUrl?: string;
+  /** @deprecated Use tokenUrl instead */
   tokenEndpointPath?: string;
 }
 
@@ -35,8 +38,10 @@ export async function refreshProviderToken(
   refreshToken: string,
   config: ProviderRefreshConfig,
 ): Promise<RefreshResult> {
-  const tokenEndpointPath = config.tokenEndpointPath || '/api/token';
-  const tokenUrl = new URL(tokenEndpointPath, config.accountsUrl).toString();
+  // Use full tokenUrl if provided, otherwise construct from accountsUrl + path
+  const tokenUrl = config.tokenUrl
+    ? config.tokenUrl
+    : new URL(config.tokenEndpointPath || '/api/token', config.accountsUrl).toString();
 
   const form = new URLSearchParams({
     grant_type: 'refresh_token',

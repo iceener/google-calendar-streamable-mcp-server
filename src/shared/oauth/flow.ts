@@ -338,7 +338,10 @@ async function refreshProviderToken(
   providerRefreshToken: string,
   providerConfig: ProviderConfig,
 ): Promise<ProviderTokens> {
-  const tokenUrl = new URL('/api/token', providerConfig.accountsUrl).toString();
+  // Use tokenUrl if provided, otherwise construct from accountsUrl
+  const tokenUrl = providerConfig.tokenUrl
+    ? new URL(providerConfig.tokenUrl).toString()
+    : new URL('/api/token', providerConfig.accountsUrl).toString();
 
   const form = new URLSearchParams({
     grant_type: 'refresh_token',

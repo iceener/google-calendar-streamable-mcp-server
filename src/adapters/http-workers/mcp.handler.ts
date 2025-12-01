@@ -108,6 +108,7 @@ function buildProviderRefreshConfig(config: UnifiedConfig): ProviderRefreshConfi
     clientId: config.PROVIDER_CLIENT_ID,
     clientSecret: config.PROVIDER_CLIENT_SECRET,
     accountsUrl: config.PROVIDER_ACCOUNTS_URL,
+    tokenUrl: config.OAUTH_TOKEN_URL,
   };
 }
 
