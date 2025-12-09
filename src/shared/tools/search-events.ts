@@ -61,8 +61,8 @@ const InputSchema = z.object({
     .describe(
       'Calendar ID(s) to search. Use "all" (default) to search all calendars, a single ID, or array of IDs',
     ),
-  timeMin: z.string().optional().describe('Start of time range (ISO 8601)'),
-  timeMax: z.string().optional().describe('End of time range (ISO 8601)'),
+  timeMin: z.string().optional().describe('Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
+  timeMax: z.string().optional().describe('End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
   query: z
     .string()
     .optional()

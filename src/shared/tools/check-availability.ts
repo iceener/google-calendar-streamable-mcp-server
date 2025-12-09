@@ -8,8 +8,8 @@ import { GoogleCalendarClient } from '../../services/google-calendar.js';
 import { defineTool, type ToolResult } from './types.js';
 
 const InputSchema = z.object({
-  timeMin: z.string().describe('Start of time range to check (ISO 8601)'),
-  timeMax: z.string().describe('End of time range to check (ISO 8601)'),
+  timeMin: z.string().describe('Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)'),
+  timeMax: z.string().describe('End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)'),
   calendarIds: z
     .array(z.string())
     .optional()

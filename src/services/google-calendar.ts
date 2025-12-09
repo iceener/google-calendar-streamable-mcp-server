@@ -260,14 +260,28 @@ export class GoogleCalendarClient {
   // Events - List/Search
   // --------------------------------------------------------------------------
 
+  /**
+   * Validates that timestamp has a timezone suffix (required by Google Calendar API).
+   * Throws if timezone is missing — caller must provide RFC3339 format.
+   */
+  private requireTimezone(timestamp: string): string {
+    // Valid: ends with Z or has +/- offset like +01:00 or -07:00
+    if (/Z$|[+-]\d{2}:\d{2}$/.test(timestamp)) {
+      return timestamp;
+    }
+    throw new Error(
+      `Invalid timestamp format: "${timestamp}". Must be RFC3339 with timezone (e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)`,
+    );
+  }
+
   async listEvents(
     params: ListEventsParams,
   ): Promise<{ items: CalendarEvent[]; nextPageToken?: string }> {
     const calendarId = params.calendarId || 'primary';
     const queryParams = new URLSearchParams();
 
-    if (params.timeMin) queryParams.set('timeMin', params.timeMin);
-    if (params.timeMax) queryParams.set('timeMax', params.timeMax);
+    if (params.timeMin) queryParams.set('timeMin', this.requireTimezone(params.timeMin));
+    if (params.timeMax) queryParams.set('timeMax', this.requireTimezone(params.timeMax));
     if (params.maxResults) queryParams.set('maxResults', String(params.maxResults));
     if (params.singleEvents !== undefined)
       queryParams.set('singleEvents', String(params.singleEvents));
@@ -472,8 +486,8 @@ export class GoogleCalendarClient {
     const calendarIds = params.calendarIds || ['primary'];
 
     const body = {
-      timeMin: params.timeMin,
-      timeMax: params.timeMax,
+      timeMin: this.requireTimezone(params.timeMin),
+      timeMax: this.requireTimezone(params.timeMax),
       timeZone: params.timeZone,
       items: calendarIds.map((id) => ({ id })),
     };
