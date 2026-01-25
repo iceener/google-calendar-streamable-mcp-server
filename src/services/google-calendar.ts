@@ -199,6 +199,33 @@ export class GoogleCalendarClient {
     this.accessToken = accessToken;
   }
 
+  /**
+   * Normalize event ID by removing the calendar email suffix if present.
+   * 
+   * Google Calendar returns composite IDs like "baseEventId calendarEmail" (base64 encoded)
+   * for shared/imported events. The update/delete APIs expect only the base event ID.
+   * 
+   * Examples of composite IDs (decoded):
+   * - "bbmpmmmickpmipbanqoosctntc adam@overment.com" → "bbmpmmmickpmipbanqoosctntc"
+   * - "abc123 someone@example.com" → "abc123"
+   */
+  private normalizeEventId(eventId: string): string {
+    // Try to decode as base64 to check for email suffix
+    try {
+      const decoded = atob(eventId);
+      // Check if decoded string contains " email@domain" pattern
+      const emailSuffixMatch = decoded.match(/^(.+?)\s+[\w.+-]+@[\w.-]+$/);
+      if (emailSuffixMatch && emailSuffixMatch[1]) {
+        // Re-encode just the base ID part
+        const baseId = emailSuffixMatch[1];
+        return btoa(baseId);
+      }
+    } catch {
+      // Not valid base64, use as-is
+    }
+    return eventId;
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${GOOGLE_CALENDAR_API_BASE}${path}`;
     const headers = {
@@ -252,7 +279,8 @@ export class GoogleCalendarClient {
   // --------------------------------------------------------------------------
 
   async getEvent(calendarId: string, eventId: string): Promise<CalendarEvent> {
-    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
+    const normalizedId = this.normalizeEventId(eventId);
+    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(normalizedId)}`;
     return this.request(path);
   }
 
@@ -398,7 +426,8 @@ export class GoogleCalendarClient {
     }
 
     const query = queryParams.toString();
-    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}${query ? `?${query}` : ''}`;
+    const normalizedId = this.normalizeEventId(params.eventId);
+    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(normalizedId)}${query ? `?${query}` : ''}`;
 
     return this.request(path, {
       method: 'PATCH',
@@ -412,7 +441,8 @@ export class GoogleCalendarClient {
     queryParams.set('destination', params.destinationCalendarId);
     if (params.sendUpdates) queryParams.set('sendUpdates', params.sendUpdates);
 
-    const path = `/calendars/${encodeURIComponent(params.calendarId)}/events/${encodeURIComponent(params.eventId)}/move?${queryParams.toString()}`;
+    const normalizedId = this.normalizeEventId(params.eventId);
+    const path = `/calendars/${encodeURIComponent(params.calendarId)}/events/${encodeURIComponent(normalizedId)}/move?${queryParams.toString()}`;
 
     return this.request(path, { method: 'POST' });
   }
@@ -428,7 +458,8 @@ export class GoogleCalendarClient {
     if (params.sendUpdates) queryParams.set('sendUpdates', params.sendUpdates);
 
     const query = queryParams.toString();
-    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}${query ? `?${query}` : ''}`;
+    const normalizedId = this.normalizeEventId(params.eventId);
+    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(normalizedId)}${query ? `?${query}` : ''}`;
 
     await this.request(path, { method: 'DELETE' });
   }
@@ -439,9 +470,10 @@ export class GoogleCalendarClient {
 
   async respondToEvent(params: RespondToEventParams): Promise<CalendarEvent> {
     const calendarId = params.calendarId || 'primary';
+    const normalizedId = this.normalizeEventId(params.eventId);
 
     // First, get the current event to find our attendee entry
-    const event = await this.getEvent(calendarId, params.eventId);
+    const event = await this.getEvent(calendarId, normalizedId);
 
     if (!event.attendees || event.attendees.length === 0) {
       throw new Error(
@@ -470,7 +502,7 @@ export class GoogleCalendarClient {
     if (params.sendUpdates) queryParams.set('sendUpdates', params.sendUpdates);
 
     const query = queryParams.toString();
-    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}${query ? `?${query}` : ''}`;
+    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(normalizedId)}${query ? `?${query}` : ''}`;
 
     return this.request(path, {
       method: 'PATCH',

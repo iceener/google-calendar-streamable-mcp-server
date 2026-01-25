@@ -234,6 +234,15 @@ export const searchEventsTool = defineTool({
       // Note: We don't pass `q` to Google API because it only does exact word matching.
       // Instead, we fetch events and filter locally with substring matching.
       // This ensures "barber" will match "barbershop".
+      
+      // When doing local query filtering, we need to fetch enough events to have
+      // a reasonable chance of finding matches. A small maxResults (e.g., 1) with
+      // only 2x multiplier means we might miss events that exist further in the list.
+      const hasLocalQuery = !!args.query;
+      const requestedMax = args.maxResults ?? 50;
+      const fetchMultiplier = hasLocalQuery ? 10 : 2; // Fetch more when filtering locally
+      const minFetchAmount = hasLocalQuery ? 100 : 10; // Minimum events to fetch for query searches
+      
       const searchPromises = calendarsToSearch.map(async (calendar) => {
         try {
           const result = await client.listEvents({
@@ -242,8 +251,8 @@ export const searchEventsTool = defineTool({
             timeMax: args.timeMax,
             maxResults:
               args.calendarId === 'all'
-                ? Math.min((args.maxResults ?? 50) * 2, 200) // Fetch more to filter locally
-                : (args.maxResults ?? 50) * 2,
+                ? Math.min(Math.max(requestedMax * fetchMultiplier, minFetchAmount), 250)
+                : Math.min(Math.max(requestedMax * fetchMultiplier, minFetchAmount), 250),
             singleEvents: args.singleEvents,
             orderBy: args.singleEvents ? args.orderBy || 'startTime' : args.orderBy,
             // Don't use Google's q parameter - do local substring filtering instead
@@ -353,13 +362,19 @@ export const searchEventsTool = defineTool({
         }
       }
 
-      // Only show nextPageToken for single calendar searches
+      // Only show nextPageToken for single calendar searches AND when we have results
+      // Don't show pagination hints when local filtering returned 0 results - it's misleading
+      // because the next page might also not contain matching events
       const singleCalendarResult = calendarsToSearch.length === 1 ? results[0] : null;
-      if (singleCalendarResult?.nextPageToken) {
+      const hasResultsToShow = allEvents.length > 0;
+      
+      if (hasResultsToShow && singleCalendarResult?.nextPageToken && !args.query) {
+        // Only show pageToken when not doing local query filtering
+        // (pageToken doesn't account for our substring filter)
         lines.push(
           `\nMore results available. Pass pageToken: "${singleCalendarResult.nextPageToken}" to fetch next page.`,
         );
-      } else if (hasMore) {
+      } else if (hasResultsToShow && hasMore) {
         lines.push(
           `\nMore results available. Increase maxResults or narrow your time range.`,
         );
