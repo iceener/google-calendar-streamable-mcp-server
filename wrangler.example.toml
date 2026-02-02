@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # MCP protocol
-MCP_PROTOCOL_VERSION = "2025-06-18"
+MCP_PROTOCOL_VERSION = "2025-11-25"
 MCP_TITLE = "Google Calendar"
 MCP_VERSION = "1.0.0"
 
@@ -31,8 +31,8 @@ OAUTH_EXTRA_AUTH_PARAMS = "access_type=offline&prompt=consent"
 # Redirect configuration
 # Update these to match your Workers deployment URL
 OAUTH_REDIRECT_ALLOW_ALL = "true"
-OAUTH_REDIRECT_ALLOWLIST = "alice://oauth/callback,https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,http://localhost:*/oauth/callback,http://127.0.0.1:*/oauth/callback"
-OAUTH_REDIRECT_URI = "alice://oauth/callback"
+OAUTH_REDIRECT_ALLOWLIST = "alice://oauth/callback,https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,http://localhost:*/oauth/callback,http://127.0.0.1:*/oauth/callback,https://example.com/mcp/oauth/calendar/callback"
+OAUTH_REDIRECT_URI = "https://your-worker.your-subdomain.workers.dev/oauth/callback"
 
 # Environment
 NODE_ENV = "production"
