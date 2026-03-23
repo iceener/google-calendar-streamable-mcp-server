@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { toolsMetadata } from '../../config/metadata.js';
-import { GoogleCalendarClient } from '../../services/google-calendar.js';
+import { CalendarApiError, GoogleCalendarClient } from '../../services/google-calendar.js';
 import { defineTool, type ToolResult } from './types.js';
 
 const InputSchema = z.object({
@@ -43,15 +43,37 @@ export const deleteEventTool = defineTool({
     }
 
     const client = new GoogleCalendarClient(token);
+    const calendarId = args.calendarId || 'primary';
 
-    try {
+    const attemptDelete = async (effectiveCalendarId: string) => {
       await client.deleteEvent({
         eventId: args.eventId,
-        calendarId: args.calendarId,
+        calendarId: effectiveCalendarId,
         sendUpdates: args.sendUpdates,
       });
+      return effectiveCalendarId;
+    };
 
-      const calendarId = args.calendarId || 'primary';
+    try {
+      let usedCalendarId: string;
+
+      try {
+        usedCalendarId = await attemptDelete(calendarId);
+      } catch (error) {
+        // On 404, retry with 'primary' if we used a specific calendarId (email form).
+        // Google Calendar API can return events via listEvents using the email alias
+        // but require 'primary' for mutations, or vice versa.
+        if (
+          error instanceof CalendarApiError &&
+          error.isNotFound &&
+          calendarId !== 'primary'
+        ) {
+          usedCalendarId = await attemptDelete('primary');
+        } else {
+          throw error;
+        }
+      }
+
       const notified =
         args.sendUpdates === 'all'
           ? 'All attendees were notified.'
@@ -63,10 +85,10 @@ export const deleteEventTool = defineTool({
         content: [
           {
             type: 'text',
-            text: `✓ Event deleted successfully.\n  eventId: ${args.eventId}\n  calendar: ${calendarId}\n  ${notified}\n\nNext: Use 'search_events' to verify deletion.`,
+            text: `✓ Event deleted successfully.\n  eventId: ${args.eventId}\n  calendar: ${usedCalendarId}\n  ${notified}\n\nNext: Use 'search_events' to verify deletion.`,
           },
         ],
-        structuredContent: { success: true, eventId: args.eventId, calendarId },
+        structuredContent: { success: true, eventId: args.eventId, calendarId: usedCalendarId },
       };
     } catch (error) {
       return {

@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { toolsMetadata } from '../../config/metadata.js';
 import {
+  CalendarApiError,
   type CalendarEvent,
   GoogleCalendarClient,
 } from '../../services/google-calendar.js';
@@ -81,13 +82,30 @@ export const respondToEventTool = defineTool({
     const client = new GoogleCalendarClient(token);
     const calendarId = args.calendarId || 'primary';
 
-    try {
-      const result = await client.respondToEvent({
-        calendarId,
+    const attemptRespond = (effectiveCalendarId: string) =>
+      client.respondToEvent({
+        calendarId: effectiveCalendarId,
         eventId: args.eventId,
         response: args.response,
         sendUpdates: args.sendUpdates,
       });
+
+    try {
+      let result: CalendarEvent;
+
+      try {
+        result = await attemptRespond(calendarId);
+      } catch (error) {
+        if (
+          error instanceof CalendarApiError &&
+          error.isNotFound &&
+          calendarId !== 'primary'
+        ) {
+          result = await attemptRespond('primary');
+        } else {
+          throw error;
+        }
+      }
 
       const text = formatResponse(result, args.response);
 

@@ -5,7 +5,7 @@
  * Uses Zod for schema validation (works in both runtimes).
  */
 
-import type { ZodObject, ZodRawShape, z } from 'zod';
+import { z, type ZodObject, type ZodRawShape } from 'zod';
 
 /**
  * Auth strategy types.
@@ -97,6 +97,27 @@ export interface ToolContext {
    */
   authHeaders?: Record<string, string>;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Shared schemas
+// ─────────────────────────────────────────────────────────────────────────
+
+const RFC3339_TZ_REGEX = /Z$|[+-]\d{2}:\d{2}$/;
+
+/**
+ * RFC3339 timestamp with required timezone suffix.
+ * Rejects bare timestamps like "2026-02-16T00:00:00" that silently break
+ * Google Calendar API calls. Returns a clear error guiding the agent to
+ * append "Z" or an offset like "+01:00".
+ */
+export const rfc3339 = z
+  .string()
+  .refine((val) => RFC3339_TZ_REGEX.test(val), {
+    message:
+      'Timestamp must include timezone: append "Z" for UTC (e.g. 2026-02-16T00:00:00Z) ' +
+      'or an offset like "+01:00" (e.g. 2026-02-16T00:00:00+01:00). ' +
+      'Bare timestamps like "2026-02-16T00:00:00" are rejected by Google Calendar API.',
+  });
 
 /**
  * Content block in tool results.

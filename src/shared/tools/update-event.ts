@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { toolsMetadata } from '../../config/metadata.js';
 import {
+  CalendarApiError,
   type CalendarEvent,
   GoogleCalendarClient,
 } from '../../services/google-calendar.js';
@@ -106,14 +107,57 @@ export const updateEventTool = defineTool({
     const client = new GoogleCalendarClient(token);
     const calendarId = args.calendarId || 'primary';
 
-    try {
-      let result: CalendarEvent;
+    const hasFieldsToUpdate =
+      args.summary !== undefined ||
+      args.start !== undefined ||
+      args.end !== undefined ||
+      args.description !== undefined ||
+      args.location !== undefined ||
+      args.attendees !== undefined ||
+      args.addGoogleMeet !== undefined ||
+      args.recurrence !== undefined ||
+      args.reminders !== undefined ||
+      args.visibility !== undefined ||
+      args.colorId !== undefined;
+
+    if (!hasFieldsToUpdate && !args.targetCalendarId) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: 'No changes specified. Provide at least one field to update or a targetCalendarId to move.',
+          },
+        ],
+      };
+    }
+
+    const buildPatchBody = () => {
+      let startObj;
+      let endObj;
+
+      if (args.start) {
+        startObj = isAllDayDate(args.start)
+          ? { date: args.start }
+          : { dateTime: args.start, timeZone: args.timeZone };
+      }
+
+      if (args.end) {
+        endObj = isAllDayDate(args.end)
+          ? { date: args.end }
+          : { dateTime: args.end, timeZone: args.timeZone };
+      }
+
+      return { startObj, endObj };
+    };
+
+    const attemptUpdate = async (effectiveCalendarId: string) => {
+      let result: CalendarEvent | undefined;
       let wasMoved = false;
 
-      // Step 1: Move if targetCalendarId is different
-      if (args.targetCalendarId && args.targetCalendarId !== calendarId) {
+      if (args.targetCalendarId && args.targetCalendarId !== effectiveCalendarId) {
         result = await client.moveEvent({
-          calendarId,
+          calendarId: effectiveCalendarId,
           eventId: args.eventId,
           destinationCalendarId: args.targetCalendarId,
           sendUpdates: args.sendUpdates,
@@ -121,39 +165,10 @@ export const updateEventTool = defineTool({
         wasMoved = true;
       }
 
-      // Step 2: Patch if any fields to update
-      const hasFieldsToUpdate =
-        args.summary !== undefined ||
-        args.start !== undefined ||
-        args.end !== undefined ||
-        args.description !== undefined ||
-        args.location !== undefined ||
-        args.attendees !== undefined ||
-        args.addGoogleMeet !== undefined ||
-        args.recurrence !== undefined ||
-        args.reminders !== undefined ||
-        args.visibility !== undefined ||
-        args.colorId !== undefined;
-
       if (hasFieldsToUpdate) {
-        // Build start/end objects if provided
-        let startObj;
-        let endObj;
-
-        if (args.start) {
-          startObj = isAllDayDate(args.start)
-            ? { date: args.start }
-            : { dateTime: args.start, timeZone: args.timeZone };
-        }
-
-        if (args.end) {
-          endObj = isAllDayDate(args.end)
-            ? { date: args.end }
-            : { dateTime: args.end, timeZone: args.timeZone };
-        }
-
+        const { startObj, endObj } = buildPatchBody();
         result = await client.updateEvent({
-          calendarId: wasMoved ? args.targetCalendarId : calendarId,
+          calendarId: wasMoved ? args.targetCalendarId : effectiveCalendarId,
           eventId: args.eventId,
           summary: args.summary,
           description: args.description,
@@ -168,20 +183,32 @@ export const updateEventTool = defineTool({
           colorId: args.colorId,
           sendUpdates: args.sendUpdates,
         });
-      } else if (!wasMoved) {
-        // Nothing to do
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: 'No changes specified. Provide at least one field to update or a targetCalendarId to move.',
-            },
-          ],
-        };
       }
 
-      const text = formatUpdatedEvent(result!, wasMoved);
+      return { result: result!, wasMoved };
+    };
+
+    try {
+      let updateResult: { result: CalendarEvent; wasMoved: boolean };
+
+      try {
+        updateResult = await attemptUpdate(calendarId);
+      } catch (error) {
+        // On 404, retry with 'primary' if we used a specific calendarId (email form).
+        // Google Calendar API can return events via listEvents using the email alias
+        // but require 'primary' for mutations, or vice versa.
+        if (
+          error instanceof CalendarApiError &&
+          error.isNotFound &&
+          calendarId !== 'primary'
+        ) {
+          updateResult = await attemptUpdate('primary');
+        } else {
+          throw error;
+        }
+      }
+
+      const text = formatUpdatedEvent(updateResult.result, updateResult.wasMoved);
 
       return {
         content: [
@@ -190,7 +217,7 @@ export const updateEventTool = defineTool({
             text: text + "\n\nNext: Use 'search_events' to verify changes.",
           },
         ],
-        structuredContent: result!,
+        structuredContent: updateResult.result,
       };
     } catch (error) {
       return {

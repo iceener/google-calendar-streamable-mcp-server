@@ -7,6 +7,29 @@ import { logger } from '../utils/logger.js';
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
 
 // ============================================================================
+// Errors
+// ============================================================================
+
+export class CalendarApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly statusText: string,
+  ) {
+    super(message);
+    this.name = 'CalendarApiError';
+  }
+
+  get isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403;
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -247,7 +270,7 @@ export class GoogleCalendarClient {
         } catch {
           // Ignore JSON parse error
         }
-        throw new Error(errorMessage);
+        throw new CalendarApiError(errorMessage, response.status, response.statusText);
       }
 
       // Handle 204 No Content

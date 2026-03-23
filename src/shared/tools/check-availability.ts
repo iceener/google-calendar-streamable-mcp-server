@@ -5,11 +5,11 @@
 import { z } from 'zod';
 import { toolsMetadata } from '../../config/metadata.js';
 import { GoogleCalendarClient } from '../../services/google-calendar.js';
-import { defineTool, type ToolResult } from './types.js';
+import { defineTool, rfc3339, type ToolResult } from './types.js';
 
 const InputSchema = z.object({
-  timeMin: z.string().describe('Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)'),
-  timeMax: z.string().describe('End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)'),
+  timeMin: rfc3339.describe('Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)'),
+  timeMax: rfc3339.describe('End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)'),
   calendarIds: z
     .array(z.string())
     .optional()

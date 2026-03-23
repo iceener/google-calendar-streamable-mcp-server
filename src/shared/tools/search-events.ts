@@ -9,7 +9,7 @@ import {
   type CalendarListItem,
   GoogleCalendarClient,
 } from '../../services/google-calendar.js';
-import { defineTool, type ToolResult } from './types.js';
+import { defineTool, rfc3339, type ToolResult } from './types.js';
 
 const DEFAULT_FIELDS = [
   'id',
@@ -20,6 +20,7 @@ const DEFAULT_FIELDS = [
   'htmlLink',
   'status',
   'attendees',
+  'organizer',
   'calendarId',
   'calendarName',
 ];
@@ -61,8 +62,8 @@ const InputSchema = z.object({
     .describe(
       'Calendar ID(s) to search. Use "all" (default) to search all calendars, a single ID, or array of IDs',
     ),
-  timeMin: z.string().optional().describe('Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
-  timeMax: z.string().optional().describe('End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
+  timeMin: rfc3339.optional().describe('Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
+  timeMax: rfc3339.optional().describe('End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
   query: z
     .string()
     .optional()
@@ -260,10 +261,18 @@ export const searchEventsTool = defineTool({
             pageToken: args.pageToken,
           });
 
-          // Add calendar info to each event
+          // Add calendar info to each event.
+          // Use the organizer's email as the authoritative calendarId when the
+          // organizer is the authenticated user (self). This resolves mismatches
+          // between alias forms (e.g. "adam@example.com" vs "primary") that cause
+          // 404s on update/delete. For events organized by others, the event lives
+          // on the searched calendar so we keep the searched calendar's ID.
           const eventsWithCalendar: EventWithCalendar[] = result.items.map((event) => ({
             ...event,
-            calendarId: calendar.id,
+            calendarId:
+              (event.organizer?.self && event.organizer.email)
+                ? event.organizer.email
+                : calendar.id,
             calendarName: calendar.summary,
           }));
 
@@ -286,6 +295,21 @@ export const searchEventsTool = defineTool({
       });
 
       const results = await Promise.all(searchPromises);
+
+      // If ALL calendars failed, surface the error instead of silently returning empty
+      const failedResults = results.filter((r) => r.error);
+      if (failedResults.length === results.length && results.length > 0) {
+        const firstError = failedResults[0]?.error ?? 'Unknown error';
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Failed to search all ${results.length} calendar(s): ${firstError}`,
+            },
+          ],
+        };
+      }
 
       // Merge all events and sort by start time
       let allEvents: EventWithCalendar[] = results.flatMap((r) => r.events);
