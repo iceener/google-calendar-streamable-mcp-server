@@ -2,8 +2,9 @@
  * Update Event tool - update or move existing events.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { CalendarEventOutputSchema } from '../../schemas/outputs.js';
 import {
   CalendarApiError,
   type CalendarEvent,
@@ -84,13 +85,14 @@ export const updateEventTool = defineTool({
   title: toolsMetadata.update_event.title,
   description: toolsMetadata.update_event.description,
   inputSchema: InputSchema,
+  outputSchema: CalendarEventOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -104,7 +106,7 @@ export const updateEventTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
     const calendarId = args.calendarId || 'primary';
 
     const hasFieldsToUpdate =
@@ -133,8 +135,14 @@ export const updateEventTool = defineTool({
     }
 
     const buildPatchBody = () => {
-      let startObj;
-      let endObj;
+      let startObj:
+        | { date: string }
+        | { dateTime: string; timeZone?: string }
+        | undefined;
+      let endObj:
+        | { date: string }
+        | { dateTime: string; timeZone?: string }
+        | undefined;
 
       if (args.start) {
         startObj = isAllDayDate(args.start)
@@ -185,7 +193,8 @@ export const updateEventTool = defineTool({
         });
       }
 
-      return { result: result!, wasMoved };
+      if (!result) throw new Error('No event update or move was performed');
+      return { result, wasMoved };
     };
 
     try {
@@ -214,10 +223,10 @@ export const updateEventTool = defineTool({
         content: [
           {
             type: 'text',
-            text: text + "\n\nNext: Use 'search_events' to verify changes.",
+            text: `${text}\n\nNext: Use 'search_events' to verify changes.`,
           },
         ],
-        structuredContent: updateResult.result,
+        structuredContent: { ...updateResult.result },
       };
     } catch (error) {
       return {
@@ -229,34 +238,3 @@ export const updateEventTool = defineTool({
     }
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -2,14 +2,19 @@
  * Check Availability tool - check free/busy status for time slots.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { AvailabilityOutputSchema } from '../../schemas/outputs.js';
 import { GoogleCalendarClient } from '../../services/google-calendar.js';
 import { defineTool, rfc3339, type ToolResult } from './types.js';
 
 const InputSchema = z.object({
-  timeMin: rfc3339.describe('Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)'),
-  timeMax: rfc3339.describe('End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)'),
+  timeMin: rfc3339.describe(
+    'Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)',
+  ),
+  timeMax: rfc3339.describe(
+    'End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)',
+  ),
   calendarIds: z
     .array(z.string())
     .optional()
@@ -29,13 +34,14 @@ export const checkAvailabilityTool = defineTool({
   title: toolsMetadata.check_availability.title,
   description: toolsMetadata.check_availability.description,
   inputSchema: InputSchema,
+  outputSchema: AvailabilityOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -49,7 +55,7 @@ export const checkAvailabilityTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
 
     try {
       const result = await client.getFreeBusy({
@@ -115,8 +121,3 @@ export const checkAvailabilityTool = defineTool({
     }
   },
 });
-
-
-
-
-

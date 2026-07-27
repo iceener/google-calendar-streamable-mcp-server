@@ -1,85 +1,55 @@
-// Simple structured logger for shared modules (works in Node + Workers)
-// Does not depend on McpServer - suitable for OAuth flow and other shared code
-
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
-
 interface LogData {
   message: string;
   [key: string]: unknown;
 }
-
-const LOG_LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warning: 2,
-  error: 3,
-};
-
+const LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warning: 2, error: 3 };
+const SENSITIVE = [
+  'password',
+  'token',
+  'secret',
+  'key',
+  'authorization',
+  'access_token',
+  'refresh_token',
+];
 let currentLevel: LogLevel = 'info';
-
-function shouldLog(level: LogLevel): boolean {
-  return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
+function output(level: LogLevel, name: string, data: LogData): void {
+  if (LEVELS[level] < LEVELS[currentLevel]) return;
+  const sanitized = Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      key,
+      SENSITIVE.some((sensitive) => key.toLowerCase().includes(sensitive))
+        ? '[REDACTED]'
+        : value,
+    ]),
+  );
+  const line = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level,
+    logger: name,
+    ...sanitized,
+  });
+  if (level === 'error') console.error(line);
+  else if (level === 'warning') console.warn(line);
+  else if (level === 'debug') console.debug(line);
+  else console.info(line);
 }
-
-function formatLog(level: LogLevel, logger: string, data: LogData): string {
-  const timestamp = new Date().toISOString();
-  const { message, ...rest } = data;
-  const extra = Object.keys(rest).length > 0 ? ` ${JSON.stringify(rest)}` : '';
-  return `[${timestamp}] ${level.toUpperCase()} [${logger}] ${message}${extra}`;
-}
-
-function sanitize(data: LogData): LogData {
-  const sanitized = { ...data };
-  const sensitiveKeys = [
-    'password',
-    'token',
-    'secret',
-    'key',
-    'authorization',
-    'access_token',
-    'refresh_token',
-  ];
-
-  for (const key of Object.keys(sanitized)) {
-    if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
-      const value = sanitized[key];
-      if (typeof value === 'string' && value.length > 8) {
-        sanitized[key] = `${value.substring(0, 8)}...`;
-      } else {
-        sanitized[key] = '[REDACTED]';
-      }
-    }
-  }
-
-  return sanitized;
-}
-
 export const sharedLogger = {
   setLevel(level: LogLevel): void {
     currentLevel = level;
   },
-
-  debug(logger: string, data: LogData): void {
-    if (shouldLog('debug')) {
-      console.log(formatLog('debug', logger, sanitize(data)));
-    }
+  debug(name: string, data: LogData): void {
+    output('debug', name, data);
   },
-
-  info(logger: string, data: LogData): void {
-    if (shouldLog('info')) {
-      console.log(formatLog('info', logger, sanitize(data)));
-    }
+  info(name: string, data: LogData): void {
+    output('info', name, data);
   },
-
-  warning(logger: string, data: LogData): void {
-    if (shouldLog('warning')) {
-      console.warn(formatLog('warning', logger, sanitize(data)));
-    }
+  warning(name: string, data: LogData): void {
+    output('warning', name, data);
   },
-
-  error(logger: string, data: LogData): void {
-    if (shouldLog('error')) {
-      console.error(formatLog('error', logger, sanitize(data)));
-    }
+  error(name: string, data: LogData): void {
+    output('error', name, data);
   },
 };
+export const logger = sharedLogger;

@@ -2,9 +2,13 @@
  * Delete Event tool - remove events from calendar.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
-import { CalendarApiError, GoogleCalendarClient } from '../../services/google-calendar.js';
+import { DeleteEventOutputSchema } from '../../schemas/outputs.js';
+import {
+  CalendarApiError,
+  GoogleCalendarClient,
+} from '../../services/google-calendar.js';
 import { defineTool, type ToolResult } from './types.js';
 
 const InputSchema = z.object({
@@ -22,13 +26,14 @@ export const deleteEventTool = defineTool({
   title: toolsMetadata.delete_event.title,
   description: toolsMetadata.delete_event.description,
   inputSchema: InputSchema,
+  outputSchema: DeleteEventOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -42,7 +47,7 @@ export const deleteEventTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
     const calendarId = args.calendarId || 'primary';
 
     const attemptDelete = async (effectiveCalendarId: string) => {
@@ -88,7 +93,11 @@ export const deleteEventTool = defineTool({
             text: `✓ Event deleted successfully.\n  eventId: ${args.eventId}\n  calendar: ${usedCalendarId}\n  ${notified}\n\nNext: Use 'search_events' to verify deletion.`,
           },
         ],
-        structuredContent: { success: true, eventId: args.eventId, calendarId: usedCalendarId },
+        structuredContent: {
+          success: true,
+          eventId: args.eventId,
+          calendarId: usedCalendarId,
+        },
       };
     } catch (error) {
       return {
@@ -100,34 +109,3 @@ export const deleteEventTool = defineTool({
     }
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

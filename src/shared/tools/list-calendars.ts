@@ -2,8 +2,9 @@
  * List Calendars tool - discover available calendars and their IDs.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { ListCalendarsOutputSchema } from '../../schemas/outputs.js';
 import { GoogleCalendarClient } from '../../services/google-calendar.js';
 import { defineTool, type ToolResult } from './types.js';
 
@@ -14,13 +15,14 @@ export const listCalendarsTool = defineTool({
   title: toolsMetadata.list_calendars.title,
   description: toolsMetadata.list_calendars.description,
   inputSchema: InputSchema,
+  outputSchema: ListCalendarsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
   },
 
   handler: async (_args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -34,7 +36,7 @@ export const listCalendarsTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
 
     try {
       const result = await client.listCalendars();
@@ -72,34 +74,3 @@ export const listCalendarsTool = defineTool({
     }
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

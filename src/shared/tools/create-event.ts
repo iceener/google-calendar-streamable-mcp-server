@@ -2,8 +2,9 @@
  * Create Event tool - create events using natural language or structured input.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { CalendarEventOutputSchema } from '../../schemas/outputs.js';
 import {
   type CalendarEvent,
   GoogleCalendarClient,
@@ -104,13 +105,14 @@ export const createEventTool = defineTool({
   title: toolsMetadata.create_event.title,
   description: toolsMetadata.create_event.description,
   inputSchema: InputSchema,
+  outputSchema: CalendarEventOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -124,7 +126,7 @@ export const createEventTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
 
     try {
       let result: CalendarEvent;
@@ -136,7 +138,7 @@ export const createEventTool = defineTool({
         // Mode A: Natural language
         result = await client.quickAdd({
           calendarId: args.calendarId,
-          text: args.text!,
+          text: args.text ?? '',
           sendUpdates: args.sendUpdates,
         });
       } else {
@@ -200,7 +202,7 @@ export const createEventTool = defineTool({
               "\n\nNext: Share htmlLink with user. Use 'search_events' to verify.",
           },
         ],
-        structuredContent: result,
+        structuredContent: { ...result },
       };
     } catch (error) {
       return {

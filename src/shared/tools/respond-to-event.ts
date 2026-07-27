@@ -2,8 +2,9 @@
  * Respond to Event tool - accept, decline, or tentatively accept an event invitation.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { RespondToEventOutputSchema } from '../../schemas/outputs.js';
 import {
   CalendarApiError,
   type CalendarEvent,
@@ -59,13 +60,14 @@ export const respondToEventTool = defineTool({
   title: toolsMetadata.respond_to_event.title,
   description: toolsMetadata.respond_to_event.description,
   inputSchema: InputSchema,
+  outputSchema: RespondToEventOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -79,7 +81,7 @@ export const respondToEventTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
     const calendarId = args.calendarId || 'primary';
 
     const attemptRespond = (effectiveCalendarId: string) =>

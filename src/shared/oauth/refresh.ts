@@ -266,7 +266,8 @@ export async function ensureFreshToken(
 
   // Determine if RS access token should rotate
   // Only rotate when provider refresh_token changed (security trade-off for KV quota)
-  const providerRefreshRotated = result.tokens.refresh_token !== record.provider.refresh_token;
+  const providerRefreshRotated =
+    result.tokens.refresh_token !== record.provider.refresh_token;
   const newRsAccess = providerRefreshRotated ? undefined : record.rs_access_token;
 
   try {

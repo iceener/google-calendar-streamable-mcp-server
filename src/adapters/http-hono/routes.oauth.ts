@@ -1,7 +1,6 @@
 // Hono adapter for OAuth routes
 // Provider-agnostic version from Spotify MCP
 
-import type { HttpBindings } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { UnifiedConfig } from '../../shared/config/env.js';
 import { handleRegister, handleRevoke } from '../../shared/oauth/endpoints.js';
@@ -22,13 +21,18 @@ import {
 import type { TokenStore } from '../../shared/storage/interface.js';
 import { sharedLogger as logger } from '../../shared/utils/logger.js';
 
-export function buildOAuthRoutes(
-  store: TokenStore,
-  config: UnifiedConfig,
-): Hono<{ Bindings: HttpBindings }> {
-  const app = new Hono<{ Bindings: HttpBindings }>();
+export function buildOAuthRoutes(store: TokenStore, config: UnifiedConfig): Hono {
+  const app = new Hono();
   const providerConfig = buildProviderConfig(config);
   const oauthConfig = buildOAuthConfig(config);
+
+  app.use('*', async (context, next) => {
+    const contentLength = Number(context.req.header('Content-Length') ?? '0');
+    if (Number.isFinite(contentLength) && contentLength > 65_536) {
+      return context.json({ error: 'request_too_large' }, 413);
+    }
+    await next();
+  });
 
   app.get('/authorize', async (c) => {
     logger.debug('oauth_hono', { message: 'Authorize request received' });

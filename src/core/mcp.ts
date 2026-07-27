@@ -1,55 +1,31 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SetLevelRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { config } from '../config/env.js';
-import { registerTools } from '../tools/index.js';
-import { logger } from '../utils/logger.js';
-import { buildCapabilities } from './capabilities.js';
+import {
+  type McpRequestContext,
+  McpServer,
+  type ServerCapabilities,
+} from '@modelcontextprotocol/server';
+import type { AppConfig } from '../config/env.js';
+import { serverImplementation } from '../config/metadata.js';
+import { providerAccessTokenFromExtra } from '../shared/auth/provider-token-verifier.js';
+import { registerTools } from '../shared/tools/registry.js';
 
-export interface ServerOptions {
-  name: string;
-  version: string;
-  instructions?: string;
-  /**
-   * Called when initialization is complete (after client sends notifications/initialized).
-   */
-  oninitialized?: () => void;
+function capabilitiesFor(context: McpRequestContext): ServerCapabilities {
+  return { tools: { listChanged: context.era === 'modern' } };
 }
 
-export function buildServer(options: ServerOptions): McpServer {
-  const { name, version, instructions, oninitialized } = options;
-
-  const server = new McpServer(
-    { name, version },
-    {
-      capabilities: buildCapabilities(),
-      instructions: instructions ?? config.MCP_INSTRUCTIONS,
+export function createMcpServer(
+  config: AppConfig,
+  context: McpRequestContext,
+): McpServer {
+  const server = new McpServer(serverImplementation(config), {
+    instructions: config.MCP_INSTRUCTIONS,
+    capabilities: capabilitiesFor(context),
+    cacheHints: {
+      'server/discover': { ttlMs: 60_000, cacheScope: 'private' },
+      'tools/list': { ttlMs: 60_000, cacheScope: 'private' },
     },
-  );
-
-  // Set up logging
-  logger.setServer(server);
-
-  // Register oninitialized callback
-  const lowLevel = (server as any).server;
-  if (lowLevel && oninitialized) {
-    lowLevel.oninitialized = () => {
-      logger.info('mcp', {
-        message: 'Client initialization complete (notifications/initialized received)',
-        clientVersion: lowLevel.getClientVersion?.(),
-      });
-      oninitialized();
-    };
-  }
-
-  // Register tools (no prompts/resources for Google Calendar MCP)
-  registerTools(server);
-
-  // Register logging/setLevel handler (required when logging capability is advertised)
-  server.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
-    const level = request.params.level;
-    logger.info('mcp', { message: 'Log level changed', level });
-    return {};
   });
-
+  registerTools(server, {
+    providerAccessToken: providerAccessTokenFromExtra(context.authInfo?.extra),
+  });
   return server;
 }

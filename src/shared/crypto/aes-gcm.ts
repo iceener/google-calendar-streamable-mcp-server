@@ -20,9 +20,11 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
     throw new Error(`Invalid key length: expected 32 bytes, got ${keyBytes.length}`);
   }
 
+  const rawKey = new Uint8Array(keyBytes.byteLength);
+  rawKey.set(keyBytes);
   return crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    rawKey,
     { name: ALGORITHM, length: KEY_LENGTH },
     false,
     ['encrypt', 'decrypt'],

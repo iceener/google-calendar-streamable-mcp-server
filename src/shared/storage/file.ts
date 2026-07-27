@@ -1,6 +1,7 @@
 // File-backed storage for Node.js with encryption and strict permissions
 // Provider-agnostic version from Spotify MCP
 
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { sharedLogger as logger } from '../utils/logger.js';
@@ -27,9 +28,6 @@ function createSyncEncryptor(keyBase64: string): {
   encrypt: (plaintext: string) => string;
   decrypt: (ciphertext: string) => string;
 } {
-  // Lazy import to avoid issues in Workers
-  const crypto = require('node:crypto');
-
   // Decode key (base64url)
   const key = Buffer.from(keyBase64.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 
@@ -39,8 +37,8 @@ function createSyncEncryptor(keyBase64: string): {
 
   return {
     encrypt(plaintext: string): string {
-      const iv = crypto.randomBytes(12);
-      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
 
       const encrypted = Buffer.concat([
         cipher.update(plaintext, 'utf8'),
@@ -65,7 +63,7 @@ function createSyncEncryptor(keyBase64: string): {
       const authTag = combined.subarray(12, 28);
       const encrypted = combined.subarray(28);
 
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      const decipher = createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(authTag);
 
       const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
@@ -172,15 +170,10 @@ export class FileTokenStore implements TokenStore {
         encrypted: data.encrypted ?? false,
       });
 
-      // Filter out expired records during load
+      // Provider access-token expiry must not discard the stored refresh token.
+      // The Resource Server verifier refreshes provider access separately.
       const now = Date.now();
-      const validRecords = data.records.filter((rec) => {
-        // Skip records with expired provider tokens
-        if (rec.provider.expires_at && now >= rec.provider.expires_at) {
-          return false;
-        }
-        return true;
-      });
+      const validRecords = data.records;
 
       // Populate internal memory maps
       for (const rec of validRecords) {
@@ -191,7 +184,7 @@ export class FileTokenStore implements TokenStore {
 
         const recordWithExpiry = {
           ...rec,
-          expiresAt: rec.provider.expires_at ?? now + 7 * 24 * 60 * 60 * 1000,
+          expiresAt: now + 7 * 24 * 60 * 60 * 1000,
         };
 
         memoryMap.rsAccessMap.set(rec.rs_access_token, recordWithExpiry);

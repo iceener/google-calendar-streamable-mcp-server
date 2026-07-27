@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "google-calendar",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "NODE_ENV": "development",
+    "MCP_NAME": "google-calendar-mcp",
+    "MCP_TITLE": "Google Calendar",
+    "MCP_VERSION": "1.0.0",
+    "MCP_PUBLIC_URL": "http://localhost:8787/mcp",
+    "MCP_ALLOWED_HOSTS": "localhost,127.0.0.1,[::1]",
+    "MCP_ALLOWED_ORIGIN_HOSTNAMES": "localhost,127.0.0.1,[::1]",
+    "MCP_LEGACY_MODE": "stateless",
+    "MCP_MAX_REQUEST_BYTES": "1048576",
+    "AUTH_ENABLED": "true",
+    "OAUTH_ISSUER_URL": "http://localhost:8787",
+    "PROVIDER_ACCOUNTS_URL": "https://accounts.google.com",
+    "OAUTH_AUTHORIZATION_URL": "https://accounts.google.com/o/oauth2/v2/auth",
+    "OAUTH_TOKEN_URL": "https://oauth2.googleapis.com/token",
+    "OAUTH_REVOCATION_URL": "https://oauth2.googleapis.com/revoke",
+    "OAUTH_SCOPES": "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+    "OAUTH_EXTRA_AUTH_PARAMS": "access_type=offline&prompt=consent",
+    "OAUTH_REDIRECT_ALLOW_ALL": "false",
+    "OAUTH_REDIRECT_ALLOWLIST": "alice://oauth/callback,http://localhost:8787/oauth/callback",
+    "OAUTH_REDIRECT_URI": "http://localhost:8787/oauth/callback",
+    "LOG_LEVEL": "info"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "TOKENS",
+      "id": "YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
+}

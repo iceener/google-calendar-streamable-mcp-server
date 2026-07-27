@@ -2,6 +2,9 @@
  * Centralized tool metadata for the Google Calendar MCP server.
  */
 
+import type { Icon } from '@modelcontextprotocol/server';
+import type { AppConfig } from './env.js';
+
 export interface ToolMetadata {
   name: string;
   title: string;
@@ -178,4 +181,29 @@ export function getToolMetadata(toolName: keyof typeof toolsMetadata): ToolMetad
  */
 export function getToolNames(): string[] {
   return Object.keys(toolsMetadata);
+}
+
+export const SERVER_ICON_PATH = '/icon.svg';
+export const SERVER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Google Calendar"><rect width="64" height="64" rx="12" fill="#fff"/><path d="M14 20h36v32H14z" fill="#4285f4"/><path d="M14 20h36v10H14z" fill="#ea4335"/><path d="M23 12v14m18-14v14" stroke="#34a853" stroke-width="5"/><path d="M24 36h16v10H24z" fill="#fbbc05"/></svg>`;
+
+export function serverIcons(config: AppConfig): Icon[] {
+  return [
+    {
+      src: new URL(SERVER_ICON_PATH, config.MCP_PUBLIC_URL).href,
+      mimeType: 'image/svg+xml',
+      sizes: ['any'],
+      theme: 'light',
+    },
+  ];
+}
+
+export function serverImplementation(config: AppConfig) {
+  return {
+    name: config.MCP_NAME,
+    title: config.MCP_TITLE,
+    version: config.MCP_VERSION,
+    description: config.MCP_DESCRIPTION,
+    icons: serverIcons(config),
+    ...(config.MCP_WEBSITE_URL ? { websiteUrl: config.MCP_WEBSITE_URL.href } : {}),
+  };
 }

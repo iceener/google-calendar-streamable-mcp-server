@@ -2,8 +2,9 @@
  * Search Events tool - search and filter events across all calendars.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../config/metadata.js';
+import { SearchEventsOutputSchema } from '../../schemas/outputs.js';
 import {
   type CalendarEvent,
   type CalendarListItem,
@@ -25,29 +26,6 @@ const DEFAULT_FIELDS = [
   'calendarName',
 ];
 
-const ALL_FIELDS = [
-  'id',
-  'summary',
-  'description',
-  'start',
-  'end',
-  'location',
-  'attendees',
-  'organizer',
-  'creator',
-  'htmlLink',
-  'hangoutLink',
-  'conferenceData',
-  'status',
-  'eventType',
-  'visibility',
-  'colorId',
-  'recurringEventId',
-  'recurrence',
-  'calendarId',
-  'calendarName',
-];
-
 // Extended event type with calendar info
 interface EventWithCalendar extends CalendarEvent {
   calendarId: string;
@@ -62,8 +40,16 @@ const InputSchema = z.object({
     .describe(
       'Calendar ID(s) to search. Use "all" (default) to search all calendars, a single ID, or array of IDs',
     ),
-  timeMin: rfc3339.optional().describe('Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
-  timeMax: rfc3339.optional().describe('End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)'),
+  timeMin: rfc3339
+    .optional()
+    .describe(
+      'Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)',
+    ),
+  timeMax: rfc3339
+    .optional()
+    .describe(
+      'End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)',
+    ),
   query: z
     .string()
     .optional()
@@ -157,9 +143,7 @@ function matchesQuerySubstring(event: CalendarEvent, query: string): boolean {
     ...(event.attendees?.map((a) => a.displayName) ?? []),
   ];
 
-  return searchableFields.some(
-    (field) => field && field.toLowerCase().includes(lowerQuery),
-  );
+  return searchableFields.some((field) => field?.toLowerCase().includes(lowerQuery));
 }
 
 export const searchEventsTool = defineTool({
@@ -167,13 +151,14 @@ export const searchEventsTool = defineTool({
   title: toolsMetadata.search_events.title,
   description: toolsMetadata.search_events.description,
   inputSchema: InputSchema,
+  outputSchema: SearchEventsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
   },
 
   handler: async (args, context): Promise<ToolResult> => {
-    const token = context.providerToken;
+    const token = context.providerAccessToken;
 
     if (!token) {
       return {
@@ -187,7 +172,7 @@ export const searchEventsTool = defineTool({
       };
     }
 
-    const client = new GoogleCalendarClient(token);
+    const client = new GoogleCalendarClient(token, context.signal);
 
     try {
       // Determine which calendars to search
@@ -235,7 +220,7 @@ export const searchEventsTool = defineTool({
       // Note: We don't pass `q` to Google API because it only does exact word matching.
       // Instead, we fetch events and filter locally with substring matching.
       // This ensures "barber" will match "barbershop".
-      
+
       // When doing local query filtering, we need to fetch enough events to have
       // a reasonable chance of finding matches. A small maxResults (e.g., 1) with
       // only 2x multiplier means we might miss events that exist further in the list.
@@ -243,7 +228,7 @@ export const searchEventsTool = defineTool({
       const requestedMax = args.maxResults ?? 50;
       const fetchMultiplier = hasLocalQuery ? 10 : 2; // Fetch more when filtering locally
       const minFetchAmount = hasLocalQuery ? 100 : 10; // Minimum events to fetch for query searches
-      
+
       const searchPromises = calendarsToSearch.map(async (calendar) => {
         try {
           const result = await client.listEvents({
@@ -252,8 +237,14 @@ export const searchEventsTool = defineTool({
             timeMax: args.timeMax,
             maxResults:
               args.calendarId === 'all'
-                ? Math.min(Math.max(requestedMax * fetchMultiplier, minFetchAmount), 250)
-                : Math.min(Math.max(requestedMax * fetchMultiplier, minFetchAmount), 250),
+                ? Math.min(
+                    Math.max(requestedMax * fetchMultiplier, minFetchAmount),
+                    250,
+                  )
+                : Math.min(
+                    Math.max(requestedMax * fetchMultiplier, minFetchAmount),
+                    250,
+                  ),
             singleEvents: args.singleEvents,
             orderBy: args.singleEvents ? args.orderBy || 'startTime' : args.orderBy,
             // Don't use Google's q parameter - do local substring filtering instead
@@ -270,7 +261,7 @@ export const searchEventsTool = defineTool({
           const eventsWithCalendar: EventWithCalendar[] = result.items.map((event) => ({
             ...event,
             calendarId:
-              (event.organizer?.self && event.organizer.email)
+              event.organizer?.self && event.organizer.email
                 ? event.organizer.email
                 : calendar.id,
             calendarName: calendar.summary,
@@ -316,8 +307,11 @@ export const searchEventsTool = defineTool({
 
       // Apply local substring filtering if query is provided
       // This catches partial matches that Google's exact word matching misses
-      if (args.query) {
-        allEvents = allEvents.filter((event) => matchesQuerySubstring(event, args.query!));
+      const localQuery = args.query;
+      if (localQuery) {
+        allEvents = allEvents.filter((event) =>
+          matchesQuerySubstring(event, localQuery),
+        );
       }
 
       // Sort by start time if using startTime ordering
@@ -391,7 +385,7 @@ export const searchEventsTool = defineTool({
       // because the next page might also not contain matching events
       const singleCalendarResult = calendarsToSearch.length === 1 ? results[0] : null;
       const hasResultsToShow = allEvents.length > 0;
-      
+
       if (hasResultsToShow && singleCalendarResult?.nextPageToken && !args.query) {
         // Only show pageToken when not doing local query filtering
         // (pageToken doesn't account for our substring filter)

@@ -217,17 +217,19 @@ export interface FreeBusyParams {
 
 export class GoogleCalendarClient {
   private accessToken: string;
+  private signal?: AbortSignal;
 
-  constructor(accessToken: string) {
+  constructor(accessToken: string, signal?: AbortSignal) {
     this.accessToken = accessToken;
+    this.signal = signal;
   }
 
   /**
    * Normalize event ID by removing the calendar email suffix if present.
-   * 
+   *
    * Google Calendar returns composite IDs like "baseEventId calendarEmail" (base64 encoded)
    * for shared/imported events. The update/delete APIs expect only the base event ID.
-   * 
+   *
    * Examples of composite IDs (decoded):
    * - "bbmpmmmickpmipbanqoosctntc adam@overment.com" → "bbmpmmmickpmipbanqoosctntc"
    * - "abc123 someone@example.com" → "abc123"
@@ -238,7 +240,7 @@ export class GoogleCalendarClient {
       const decoded = atob(eventId);
       // Check if decoded string contains " email@domain" pattern
       const emailSuffixMatch = decoded.match(/^(.+?)\s+[\w.+-]+@[\w.-]+$/);
-      if (emailSuffixMatch && emailSuffixMatch[1]) {
+      if (emailSuffixMatch?.[1]) {
         // Re-encode just the base ID part
         const baseId = emailSuffixMatch[1];
         return btoa(baseId);
@@ -258,7 +260,11 @@ export class GoogleCalendarClient {
     };
 
     try {
-      const response = await fetch(url, { ...options, headers });
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        signal: options.signal ?? this.signal,
+      });
 
       if (!response.ok) {
         let errorMessage = `Google Calendar API error: ${response.status} ${response.statusText}`;
@@ -331,8 +337,10 @@ export class GoogleCalendarClient {
     const calendarId = params.calendarId || 'primary';
     const queryParams = new URLSearchParams();
 
-    if (params.timeMin) queryParams.set('timeMin', this.requireTimezone(params.timeMin));
-    if (params.timeMax) queryParams.set('timeMax', this.requireTimezone(params.timeMax));
+    if (params.timeMin)
+      queryParams.set('timeMin', this.requireTimezone(params.timeMin));
+    if (params.timeMax)
+      queryParams.set('timeMax', this.requireTimezone(params.timeMax));
     if (params.maxResults) queryParams.set('maxResults', String(params.maxResults));
     if (params.singleEvents !== undefined)
       queryParams.set('singleEvents', String(params.singleEvents));
@@ -385,7 +393,7 @@ export class GoogleCalendarClient {
     if (params.addGoogleMeet) {
       body.conferenceData = {
         createRequest: {
-          requestId: `meet-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          requestId: `meet-${crypto.randomUUID()}`,
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       };
@@ -442,7 +450,7 @@ export class GoogleCalendarClient {
     if (params.addGoogleMeet) {
       body.conferenceData = {
         createRequest: {
-          requestId: `meet-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          requestId: `meet-${crypto.randomUUID()}`,
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       };
