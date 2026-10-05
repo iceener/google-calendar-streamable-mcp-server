@@ -1,0 +1,2821 @@
+{
+  "_note": "Recorded from the checkpoint (commit 180f48b) running as a dry-run production Worker bundle in local workerd with the deployed vars, through the official MCP client. resources/list, resources/templates/list and prompts/list are empty because the server advertised neither capability; the client answers them locally. calls: two tool calls against loopback Google mocks (harness: google-calendar-mcp-evidence/matrix.mjs); _meta removed. Host names are replaced with the stand-ins of wrangler.production.example.jsonc.",
+  "modern": {
+    "serverInfo": {
+      "name": "google-calendar-mcp",
+      "title": "Google Calendar",
+      "icons": [
+        {
+          "src": "https://google-calendar.example.workers.dev/icon.svg",
+          "mimeType": "image/svg+xml",
+          "sizes": ["any"],
+          "theme": "light"
+        }
+      ],
+      "version": "1.0.0",
+      "description": "Manage Google Calendar events, calendars, invitations, and availability."
+    },
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "instructions": "Manage Google Calendar events. Search before mutating and verify changes afterward.",
+    "tools/list": {
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "google-calendar-mcp",
+          "title": "Google Calendar",
+          "icons": [
+            {
+              "src": "https://google-calendar.example.workers.dev/icon.svg",
+              "mimeType": "image/svg+xml",
+              "sizes": ["any"],
+              "theme": "light"
+            }
+          ],
+          "version": "1.0.0",
+          "description": "Manage Google Calendar events, calendars, invitations, and availability."
+        }
+      },
+      "ttlMs": 60000,
+      "cacheScope": "private",
+      "tools": [
+        {
+          "name": "list_calendars",
+          "title": "List Calendars",
+          "description": "List all calendars accessible to the user with their details. Use this FIRST to discover calendar IDs. Inputs: none.\nReturns: { items: Array<{ id, summary, primary?, backgroundColor?, accessRole, timeZone, description? }> }.\nNext: Use calendarId from items in 'search_events', 'create_event', etc. The 'primary' calendar is the user's main calendar.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {}
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "backgroundColor": {
+                      "type": "string"
+                    },
+                    "foregroundColor": {
+                      "type": "string"
+                    },
+                    "accessRole": {
+                      "type": "string",
+                      "enum": ["owner", "writer", "reader", "freeBusyReader"]
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "summary", "accessRole"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["items"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "search_events",
+          "title": "Search Events",
+          "description": "Search events across ALL calendars by default. Returns merged results sorted by start time.\n\nInputs: calendarId? (default: 'all' = searches all accessible calendars; can also be a single calendar ID or array of IDs), timeMin?, timeMax? (ISO 8601), query? (searches title, description, location, attendees), maxResults? (default: 50, total across all calendars), eventTypes? (default|birthday|focusTime|outOfOffice|workingLocation), orderBy? (startTime|updated), fields? (array of fields to return).\n\nCALENDAR SEARCH:\n- Default ('all'): Searches ALL accessible calendars in parallel.\n- Single calendar: calendarId: 'primary' or specific calendar ID.\n- Multiple calendars: calendarId: ['primary', 'work@group.calendar.google.com'].\n\nFILTERING BY TIME (important!):\n- Today's events: timeMin=start of day, timeMax=end of day in user's timezone.\n- This week: timeMin=Monday 00:00, timeMax=Sunday 23:59:59.\n- Upcoming: timeMin=now, no timeMax.\n\nFILTERING BY TYPE:\n- Regular events only: eventTypes: ['default']\n- Focus time: eventTypes: ['focusTime']\n- Out of office: eventTypes: ['outOfOffice']\n\nText search: pass query: \"meeting with John\" to match title, description, location, or attendee names/emails.\n\nReturns: { items: Array<{ id, summary, start, end, calendarId, calendarName, location?, htmlLink, status, ... }>, calendarsSearched, nextPageToken? }.\nIMPORTANT: Each event includes 'calendarId' and 'calendarName' showing which calendar it belongs to.\n\nNext: Use eventId AND calendarId with 'update_event' or 'delete_event'. Pagination only works with single calendar searches.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "calendarId": {
+                "default": "all",
+                "description": "Calendar ID(s) to search. Use \"all\" (default) to search all calendars, a single ID, or array of IDs",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "timeMin": {
+                "description": "Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)",
+                "type": "string"
+              },
+              "timeMax": {
+                "description": "End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)",
+                "type": "string"
+              },
+              "query": {
+                "description": "Text search (matches title, description, location, attendees)",
+                "type": "string"
+              },
+              "maxResults": {
+                "default": 50,
+                "description": "Max events to return (total across all calendars)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 250
+              },
+              "eventTypes": {
+                "description": "Filter by event type",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["default", "birthday", "focusTime", "outOfOffice", "workingLocation"]
+                }
+              },
+              "orderBy": {
+                "description": "Sort order",
+                "type": "string",
+                "enum": ["startTime", "updated"]
+              },
+              "pageToken": {
+                "description": "Token for pagination (only works with single calendar)",
+                "type": "string"
+              },
+              "fields": {
+                "description": "Fields to include in response",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "singleEvents": {
+                "default": true,
+                "description": "Expand recurring events into instances",
+                "type": "boolean"
+              }
+            }
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "start": {
+                      "type": "object",
+                      "properties": {
+                        "dateTime": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "type": "string"
+                        },
+                        "timeZone": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "end": {
+                      "type": "object",
+                      "properties": {
+                        "dateTime": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "type": "string"
+                        },
+                        "timeZone": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "location": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["confirmed", "tentative", "cancelled"]
+                    },
+                    "htmlLink": {
+                      "type": "string"
+                    },
+                    "hangoutLink": {
+                      "type": "string"
+                    },
+                    "conferenceData": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "attendees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "responseStatus": {
+                            "type": "string",
+                            "enum": ["needsAction", "declined", "tentative", "accepted"]
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          },
+                          "organizer": {
+                            "type": "boolean"
+                          },
+                          "self": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["email"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "organizer": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "self": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    },
+                    "creator": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    },
+                    "eventType": {
+                      "type": "string",
+                      "enum": [
+                        "default",
+                        "birthday",
+                        "focusTime",
+                        "fromGmail",
+                        "outOfOffice",
+                        "workingLocation"
+                      ]
+                    },
+                    "visibility": {
+                      "type": "string",
+                      "enum": ["default", "public", "private", "confidential"]
+                    },
+                    "colorId": {
+                      "type": "string"
+                    },
+                    "recurringEventId": {
+                      "type": "string"
+                    },
+                    "recurrence": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reminders": {
+                      "type": "object",
+                      "properties": {
+                        "useDefault": {
+                          "type": "boolean"
+                        },
+                        "overrides": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "method": {
+                                "type": "string",
+                                "enum": ["popup", "email"]
+                              },
+                              "minutes": {
+                                "type": "number"
+                              }
+                            },
+                            "required": ["method", "minutes"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": ["useDefault"],
+                      "additionalProperties": false
+                    },
+                    "created": {
+                      "type": "string"
+                    },
+                    "updated": {
+                      "type": "string"
+                    },
+                    "calendarId": {
+                      "type": "string"
+                    },
+                    "calendarName": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "calendarsSearched": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "nextPageToken": {
+                "type": "string"
+              }
+            },
+            "required": ["items", "calendarsSearched"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "check_availability",
+          "title": "Check Availability",
+          "description": "Check free/busy status for time slots across one or more calendars. Use BEFORE scheduling to find available times. Inputs: timeMin, timeMax (ISO 8601, required), calendarIds? (default: ['primary']).\nReturns: { calendars: { [calendarId]: { busy: Array<{ start, end }> } } }.\nBehavior: Returns only busy time blocks. Free time = gaps between busy blocks.\nNext: Use free slots to suggest meeting times, then 'create_event' to book.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "timeMin": {
+                "type": "string",
+                "description": "Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)"
+              },
+              "timeMax": {
+                "type": "string",
+                "description": "End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)"
+              },
+              "calendarIds": {
+                "default": ["primary"],
+                "description": "Calendar IDs to check (defaults to [\"primary\"])",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeZone": {
+                "description": "Timezone for the response",
+                "type": "string"
+              }
+            },
+            "required": ["timeMin", "timeMax"]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "timeMin": {
+                "type": "string"
+              },
+              "timeMax": {
+                "type": "string"
+              },
+              "calendars": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "busy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["start", "end"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["domain", "reason"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["busy"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["timeMin", "timeMax", "calendars"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "create_event",
+          "title": "Create Event",
+          "description": "Create a calendar event using natural language OR structured input. Inputs vary by mode.\n\nMODE A - Natural language (uses Google quickAdd):\n- text: string (e.g., \"Lunch with Anna tomorrow at noon for 1 hour\", \"Team standup every Monday 9am\")\n- calendarId?: string (default: 'primary')\n- sendUpdates?: 'all'|'externalOnly'|'none' (default: 'none')\nDetection: If 'text' is provided without 'summary', uses quickAdd.\n\nMODE B - Structured:\n- summary: string (required, event title)\n- start: string (ISO 8601 datetime) or { date: string } for all-day (required)\n- end: string (ISO 8601 datetime) or { date: string } for all-day (required)\n- calendarId?: string (default: 'primary')\n- description?: string\n- location?: string\n- attendees?: string[] (array of email addresses)\n- addGoogleMeet?: boolean (default: false, auto-creates Meet link)\n- recurrence?: string[] (RRULE array, e.g., [\"RRULE:FREQ=WEEKLY;COUNT=10\"])\n- reminders?: { useDefault: boolean, overrides?: Array<{ method: 'popup'|'email', minutes: number }> }\n- visibility?: 'default'|'public'|'private'|'confidential'\n- colorId?: string (1-11)\n- sendUpdates?: 'all'|'externalOnly'|'none' (default: 'none')\n\nReturns: Created event object with id, htmlLink, and all fields.\nNext: Share htmlLink with user. Use 'search_events' to verify creation.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "text": {
+                "description": "Natural language event description (e.g., \"Lunch with Anna tomorrow at noon\")",
+                "type": "string"
+              },
+              "summary": {
+                "description": "Event title",
+                "type": "string"
+              },
+              "start": {
+                "description": "Start time (ISO 8601 datetime or YYYY-MM-DD for all-day)",
+                "type": "string"
+              },
+              "end": {
+                "description": "End time (ISO 8601 datetime or YYYY-MM-DD for all-day)",
+                "type": "string"
+              },
+              "description": {
+                "description": "Event description",
+                "type": "string"
+              },
+              "location": {
+                "description": "Event location",
+                "type": "string"
+              },
+              "attendees": {
+                "description": "List of attendee email addresses",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "addGoogleMeet": {
+                "default": false,
+                "description": "Auto-create Google Meet link",
+                "type": "boolean"
+              },
+              "recurrence": {
+                "description": "RRULE array for recurring events",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "description": "Reminder settings",
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 40320
+                        }
+                      },
+                      "required": ["method", "minutes"]
+                    }
+                  }
+                },
+                "required": ["useDefault"]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "description": "Color ID (1-11)",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              },
+              "timeZone": {
+                "description": "Time zone for the event",
+                "type": "string"
+              }
+            }
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "location": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["confirmed", "tentative", "cancelled"]
+              },
+              "htmlLink": {
+                "type": "string"
+              },
+              "hangoutLink": {
+                "type": "string"
+              },
+              "conferenceData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "responseStatus": {
+                      "type": "string",
+                      "enum": ["needsAction", "declined", "tentative", "accepted"]
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    },
+                    "organizer": {
+                      "type": "boolean"
+                    },
+                    "self": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["email"],
+                  "additionalProperties": false
+                }
+              },
+              "organizer": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "self": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "creator": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "eventType": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "birthday",
+                  "focusTime",
+                  "fromGmail",
+                  "outOfOffice",
+                  "workingLocation"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "type": "string"
+              },
+              "recurringEventId": {
+                "type": "string"
+              },
+              "recurrence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["method", "minutes"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["useDefault"],
+                "additionalProperties": false
+              },
+              "created": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "update_event",
+          "title": "Update Event",
+          "description": "Update or move an existing event. Uses PATCH semantics (only provided fields are changed). Inputs: eventId (required), calendarId? (default: 'primary'), targetCalendarId? (moves event if different from calendarId), sendUpdates? ('all'|'externalOnly'|'none', default: 'none'), plus any field to update: summary?, start?, end?, description?, location?, attendees?, addGoogleMeet?, recurrence?, reminders?, visibility?, colorId?.\n\nMOVE BEHAVIOR:\n- If targetCalendarId differs from calendarId, performs Move operation first.\n- Only 'default' events can be moved (not birthday, focusTime, outOfOffice, workingLocation).\n\nPATCH BEHAVIOR:\n- Only sends fields you provide; omitted fields remain unchanged.\n- To clear a field, set it to null or empty string where applicable.\n\nReturns: Updated event object.\nNext: Use 'search_events' to verify changes. Share updated htmlLink if needed.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to update"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "targetCalendarId": {
+                "description": "Move event to this calendar",
+                "type": "string"
+              },
+              "summary": {
+                "description": "New event title",
+                "type": "string"
+              },
+              "start": {
+                "description": "New start time (ISO 8601)",
+                "type": "string"
+              },
+              "end": {
+                "description": "New end time (ISO 8601)",
+                "type": "string"
+              },
+              "description": {
+                "description": "New description",
+                "type": "string"
+              },
+              "location": {
+                "description": "New location",
+                "type": "string"
+              },
+              "attendees": {
+                "description": "New attendee list (replaces existing)",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+              },
+              "addGoogleMeet": {
+                "description": "Add Google Meet link",
+                "type": "boolean"
+              },
+              "recurrence": {
+                "description": "New RRULE array",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "description": "New reminder settings",
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 40320
+                        }
+                      },
+                      "required": ["method", "minutes"]
+                    }
+                  }
+                },
+                "required": ["useDefault"]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "description": "New color ID (1-11)",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              },
+              "timeZone": {
+                "description": "Time zone for datetime values",
+                "type": "string"
+              }
+            },
+            "required": ["eventId"]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "location": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["confirmed", "tentative", "cancelled"]
+              },
+              "htmlLink": {
+                "type": "string"
+              },
+              "hangoutLink": {
+                "type": "string"
+              },
+              "conferenceData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "responseStatus": {
+                      "type": "string",
+                      "enum": ["needsAction", "declined", "tentative", "accepted"]
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    },
+                    "organizer": {
+                      "type": "boolean"
+                    },
+                    "self": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["email"],
+                  "additionalProperties": false
+                }
+              },
+              "organizer": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "self": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "creator": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "eventType": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "birthday",
+                  "focusTime",
+                  "fromGmail",
+                  "outOfOffice",
+                  "workingLocation"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "type": "string"
+              },
+              "recurringEventId": {
+                "type": "string"
+              },
+              "recurrence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["method", "minutes"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["useDefault"],
+                "additionalProperties": false
+              },
+              "created": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "delete_event",
+          "title": "Delete Event",
+          "description": "Delete an event from a calendar. Inputs: eventId (required), calendarId? (default: 'primary'), sendUpdates? ('all'|'externalOnly'|'none', default: 'none').\nBehavior: Permanently removes the event. If it's a recurring event instance, only that instance is deleted. To delete all instances, delete the parent event (use recurringEventId).\nReturns: { success: true }.\nNext: Use 'search_events' to verify deletion.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to delete"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "description": "Notify attendees about the cancellation",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              }
+            },
+            "required": ["eventId"]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "calendarId": {
+                "type": "string"
+              }
+            },
+            "required": ["success", "eventId", "calendarId"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": true
+          }
+        },
+        {
+          "name": "respond_to_event",
+          "title": "Respond to Event",
+          "description": "Accept, decline, or tentatively accept an event invitation.\n\nInputs:\n- eventId: string (required) — Event ID from search_events\n- calendarId?: string (default: 'primary') — Calendar where the event appears\n- response: 'accepted' | 'declined' | 'tentative' (required)\n  - 'accepted' = Yes, I'll attend\n  - 'declined' = No, I won't attend  \n  - 'tentative' = Maybe\n- sendUpdates?: 'all' | 'externalOnly' | 'none' (default: 'all')\n\nBehavior: Updates YOUR attendance status for the event. You must be an attendee (invited) to respond.\n\nReturns: Updated event object with your new response status.\n\nNote: This only works for events you were invited to. For events you created yourself, you are the organizer, not an attendee.",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to respond to"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "response": {
+                "type": "string",
+                "enum": ["accepted", "declined", "tentative"],
+                "description": "Your response: \"accepted\" (yes), \"declined\" (no), or \"tentative\" (maybe)"
+              },
+              "sendUpdates": {
+                "default": "all",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              }
+            },
+            "required": ["eventId", "response"]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "action": {
+                "type": "string",
+                "const": "respond_to_event"
+              },
+              "response": {
+                "type": "string",
+                "enum": ["accepted", "declined", "tentative"]
+              },
+              "event": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "dateTime": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "dateTime": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["confirmed", "tentative", "cancelled"]
+                  },
+                  "htmlLink": {
+                    "type": "string"
+                  },
+                  "hangoutLink": {
+                    "type": "string"
+                  },
+                  "conferenceData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "attendees": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "responseStatus": {
+                          "type": "string",
+                          "enum": ["needsAction", "declined", "tentative", "accepted"]
+                        },
+                        "optional": {
+                          "type": "boolean"
+                        },
+                        "organizer": {
+                          "type": "boolean"
+                        },
+                        "self": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "organizer": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "self": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["email"],
+                    "additionalProperties": false
+                  },
+                  "creator": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["email"],
+                    "additionalProperties": false
+                  },
+                  "eventType": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "birthday",
+                      "focusTime",
+                      "fromGmail",
+                      "outOfOffice",
+                      "workingLocation"
+                    ]
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": ["default", "public", "private", "confidential"]
+                  },
+                  "colorId": {
+                    "type": "string"
+                  },
+                  "recurringEventId": {
+                    "type": "string"
+                  },
+                  "recurrence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reminders": {
+                    "type": "object",
+                    "properties": {
+                      "useDefault": {
+                        "type": "boolean"
+                      },
+                      "overrides": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "method": {
+                              "type": "string",
+                              "enum": ["popup", "email"]
+                            },
+                            "minutes": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["method", "minutes"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["useDefault"],
+                    "additionalProperties": false
+                  },
+                  "created": {
+                    "type": "string"
+                  },
+                  "updated": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["ok", "action", "response", "event"],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        }
+      ]
+    },
+    "resources/list": {
+      "resources": []
+    },
+    "resources/templates/list": {
+      "resourceTemplates": []
+    },
+    "prompts/list": {
+      "prompts": []
+    },
+    "calls": {
+      "list_calendars": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Found 1 calendar(s):\n\n- Someone (primary) [owner]\n  id: someone@example.com\n  timezone: Europe/Warsaw\n\nNext: Use calendarId in 'search_events', 'create_event', etc."
+          }
+        ],
+        "structuredContent": {
+          "items": [
+            {
+              "id": "someone@example.com",
+              "summary": "Someone",
+              "primary": true,
+              "accessRole": "owner",
+              "timeZone": "Europe/Warsaw",
+              "backgroundColor": "#9fe1e7"
+            }
+          ]
+        }
+      },
+      "check_availability": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Availability check: 2026-10-05T00:00:00Z to 2026-10-06T00:00:00Z\n\n📅 primary: 1 busy slot(s)\n   - 10/5/2026, 9:00:00 AM → 10/5/2026, 10:00:00 AM\n\nTotal: 1 busy slot(s) across all calendars.\nFree times are the gaps between busy slots.\n\nNext: Use 'create_event' to schedule during free times."
+          }
+        ],
+        "structuredContent": {
+          "timeMin": "2026-10-05T00:00:00Z",
+          "timeMax": "2026-10-06T00:00:00Z",
+          "calendars": {
+            "primary": {
+              "busy": [
+                {
+                  "start": "2026-10-05T09:00:00Z",
+                  "end": "2026-10-05T10:00:00Z"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "legacy": {
+    "serverInfo": {
+      "name": "google-calendar-mcp",
+      "title": "Google Calendar",
+      "icons": [
+        {
+          "src": "https://google-calendar.example.workers.dev/icon.svg",
+          "mimeType": "image/svg+xml",
+          "sizes": ["any"],
+          "theme": "light"
+        }
+      ],
+      "version": "1.0.0",
+      "description": "Manage Google Calendar events, calendars, invitations, and availability."
+    },
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "instructions": "Manage Google Calendar events. Search before mutating and verify changes afterward.",
+    "tools/list": {
+      "tools": [
+        {
+          "name": "list_calendars",
+          "title": "List Calendars",
+          "description": "List all calendars accessible to the user with their details. Use this FIRST to discover calendar IDs. Inputs: none.\nReturns: { items: Array<{ id, summary, primary?, backgroundColor?, accessRole, timeZone, description? }> }.\nNext: Use calendarId from items in 'search_events', 'create_event', etc. The 'primary' calendar is the user's main calendar.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "backgroundColor": {
+                      "type": "string"
+                    },
+                    "foregroundColor": {
+                      "type": "string"
+                    },
+                    "accessRole": {
+                      "type": "string",
+                      "enum": ["owner", "writer", "reader", "freeBusyReader"]
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "summary", "accessRole"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["items"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "search_events",
+          "title": "Search Events",
+          "description": "Search events across ALL calendars by default. Returns merged results sorted by start time.\n\nInputs: calendarId? (default: 'all' = searches all accessible calendars; can also be a single calendar ID or array of IDs), timeMin?, timeMax? (ISO 8601), query? (searches title, description, location, attendees), maxResults? (default: 50, total across all calendars), eventTypes? (default|birthday|focusTime|outOfOffice|workingLocation), orderBy? (startTime|updated), fields? (array of fields to return).\n\nCALENDAR SEARCH:\n- Default ('all'): Searches ALL accessible calendars in parallel.\n- Single calendar: calendarId: 'primary' or specific calendar ID.\n- Multiple calendars: calendarId: ['primary', 'work@group.calendar.google.com'].\n\nFILTERING BY TIME (important!):\n- Today's events: timeMin=start of day, timeMax=end of day in user's timezone.\n- This week: timeMin=Monday 00:00, timeMax=Sunday 23:59:59.\n- Upcoming: timeMin=now, no timeMax.\n\nFILTERING BY TYPE:\n- Regular events only: eventTypes: ['default']\n- Focus time: eventTypes: ['focusTime']\n- Out of office: eventTypes: ['outOfOffice']\n\nText search: pass query: \"meeting with John\" to match title, description, location, or attendee names/emails.\n\nReturns: { items: Array<{ id, summary, start, end, calendarId, calendarName, location?, htmlLink, status, ... }>, calendarsSearched, nextPageToken? }.\nIMPORTANT: Each event includes 'calendarId' and 'calendarName' showing which calendar it belongs to.\n\nNext: Use eventId AND calendarId with 'update_event' or 'delete_event'. Pagination only works with single calendar searches.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "calendarId": {
+                "default": "all",
+                "description": "Calendar ID(s) to search. Use \"all\" (default) to search all calendars, a single ID, or array of IDs",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "timeMin": {
+                "description": "Start of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)",
+                "type": "string"
+              },
+              "timeMax": {
+                "description": "End of time range (RFC3339 with timezone, e.g., 2025-12-06T19:00:00Z or 2025-12-06T19:00:00+01:00)",
+                "type": "string"
+              },
+              "query": {
+                "description": "Text search (matches title, description, location, attendees)",
+                "type": "string"
+              },
+              "maxResults": {
+                "default": 50,
+                "description": "Max events to return (total across all calendars)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 250
+              },
+              "eventTypes": {
+                "description": "Filter by event type",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["default", "birthday", "focusTime", "outOfOffice", "workingLocation"]
+                }
+              },
+              "orderBy": {
+                "description": "Sort order",
+                "type": "string",
+                "enum": ["startTime", "updated"]
+              },
+              "pageToken": {
+                "description": "Token for pagination (only works with single calendar)",
+                "type": "string"
+              },
+              "fields": {
+                "description": "Fields to include in response",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "singleEvents": {
+                "default": true,
+                "description": "Expand recurring events into instances",
+                "type": "boolean"
+              }
+            },
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "start": {
+                      "type": "object",
+                      "properties": {
+                        "dateTime": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "type": "string"
+                        },
+                        "timeZone": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "end": {
+                      "type": "object",
+                      "properties": {
+                        "dateTime": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "type": "string"
+                        },
+                        "timeZone": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "location": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["confirmed", "tentative", "cancelled"]
+                    },
+                    "htmlLink": {
+                      "type": "string"
+                    },
+                    "hangoutLink": {
+                      "type": "string"
+                    },
+                    "conferenceData": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "attendees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "responseStatus": {
+                            "type": "string",
+                            "enum": ["needsAction", "declined", "tentative", "accepted"]
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          },
+                          "organizer": {
+                            "type": "boolean"
+                          },
+                          "self": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["email"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "organizer": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "self": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    },
+                    "creator": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    },
+                    "eventType": {
+                      "type": "string",
+                      "enum": [
+                        "default",
+                        "birthday",
+                        "focusTime",
+                        "fromGmail",
+                        "outOfOffice",
+                        "workingLocation"
+                      ]
+                    },
+                    "visibility": {
+                      "type": "string",
+                      "enum": ["default", "public", "private", "confidential"]
+                    },
+                    "colorId": {
+                      "type": "string"
+                    },
+                    "recurringEventId": {
+                      "type": "string"
+                    },
+                    "recurrence": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reminders": {
+                      "type": "object",
+                      "properties": {
+                        "useDefault": {
+                          "type": "boolean"
+                        },
+                        "overrides": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "method": {
+                                "type": "string",
+                                "enum": ["popup", "email"]
+                              },
+                              "minutes": {
+                                "type": "number"
+                              }
+                            },
+                            "required": ["method", "minutes"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": ["useDefault"],
+                      "additionalProperties": false
+                    },
+                    "created": {
+                      "type": "string"
+                    },
+                    "updated": {
+                      "type": "string"
+                    },
+                    "calendarId": {
+                      "type": "string"
+                    },
+                    "calendarName": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "calendarsSearched": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "nextPageToken": {
+                "type": "string"
+              }
+            },
+            "required": ["items", "calendarsSearched"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "check_availability",
+          "title": "Check Availability",
+          "description": "Check free/busy status for time slots across one or more calendars. Use BEFORE scheduling to find available times. Inputs: timeMin, timeMax (ISO 8601, required), calendarIds? (default: ['primary']).\nReturns: { calendars: { [calendarId]: { busy: Array<{ start, end }> } } }.\nBehavior: Returns only busy time blocks. Free time = gaps between busy blocks.\nNext: Use free slots to suggest meeting times, then 'create_event' to book.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "timeMin": {
+                "type": "string",
+                "description": "Start of time range to check (RFC3339 with timezone, e.g., 2025-12-06T09:00:00Z or 2025-12-06T09:00:00+01:00)"
+              },
+              "timeMax": {
+                "type": "string",
+                "description": "End of time range to check (RFC3339 with timezone, e.g., 2025-12-06T17:00:00Z or 2025-12-06T17:00:00+01:00)"
+              },
+              "calendarIds": {
+                "default": ["primary"],
+                "description": "Calendar IDs to check (defaults to [\"primary\"])",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeZone": {
+                "description": "Timezone for the response",
+                "type": "string"
+              }
+            },
+            "required": ["timeMin", "timeMax"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "timeMin": {
+                "type": "string"
+              },
+              "timeMax": {
+                "type": "string"
+              },
+              "calendars": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "busy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["start", "end"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["domain", "reason"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["busy"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["timeMin", "timeMax", "calendars"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "create_event",
+          "title": "Create Event",
+          "description": "Create a calendar event using natural language OR structured input. Inputs vary by mode.\n\nMODE A - Natural language (uses Google quickAdd):\n- text: string (e.g., \"Lunch with Anna tomorrow at noon for 1 hour\", \"Team standup every Monday 9am\")\n- calendarId?: string (default: 'primary')\n- sendUpdates?: 'all'|'externalOnly'|'none' (default: 'none')\nDetection: If 'text' is provided without 'summary', uses quickAdd.\n\nMODE B - Structured:\n- summary: string (required, event title)\n- start: string (ISO 8601 datetime) or { date: string } for all-day (required)\n- end: string (ISO 8601 datetime) or { date: string } for all-day (required)\n- calendarId?: string (default: 'primary')\n- description?: string\n- location?: string\n- attendees?: string[] (array of email addresses)\n- addGoogleMeet?: boolean (default: false, auto-creates Meet link)\n- recurrence?: string[] (RRULE array, e.g., [\"RRULE:FREQ=WEEKLY;COUNT=10\"])\n- reminders?: { useDefault: boolean, overrides?: Array<{ method: 'popup'|'email', minutes: number }> }\n- visibility?: 'default'|'public'|'private'|'confidential'\n- colorId?: string (1-11)\n- sendUpdates?: 'all'|'externalOnly'|'none' (default: 'none')\n\nReturns: Created event object with id, htmlLink, and all fields.\nNext: Share htmlLink with user. Use 'search_events' to verify creation.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "description": "Natural language event description (e.g., \"Lunch with Anna tomorrow at noon\")",
+                "type": "string"
+              },
+              "summary": {
+                "description": "Event title",
+                "type": "string"
+              },
+              "start": {
+                "description": "Start time (ISO 8601 datetime or YYYY-MM-DD for all-day)",
+                "type": "string"
+              },
+              "end": {
+                "description": "End time (ISO 8601 datetime or YYYY-MM-DD for all-day)",
+                "type": "string"
+              },
+              "description": {
+                "description": "Event description",
+                "type": "string"
+              },
+              "location": {
+                "description": "Event location",
+                "type": "string"
+              },
+              "attendees": {
+                "description": "List of attendee email addresses",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "addGoogleMeet": {
+                "default": false,
+                "description": "Auto-create Google Meet link",
+                "type": "boolean"
+              },
+              "recurrence": {
+                "description": "RRULE array for recurring events",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "description": "Reminder settings",
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 40320
+                        }
+                      },
+                      "required": ["method", "minutes"]
+                    }
+                  }
+                },
+                "required": ["useDefault"]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "description": "Color ID (1-11)",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              },
+              "timeZone": {
+                "description": "Time zone for the event",
+                "type": "string"
+              }
+            },
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "location": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["confirmed", "tentative", "cancelled"]
+              },
+              "htmlLink": {
+                "type": "string"
+              },
+              "hangoutLink": {
+                "type": "string"
+              },
+              "conferenceData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "responseStatus": {
+                      "type": "string",
+                      "enum": ["needsAction", "declined", "tentative", "accepted"]
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    },
+                    "organizer": {
+                      "type": "boolean"
+                    },
+                    "self": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["email"],
+                  "additionalProperties": false
+                }
+              },
+              "organizer": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "self": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "creator": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "eventType": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "birthday",
+                  "focusTime",
+                  "fromGmail",
+                  "outOfOffice",
+                  "workingLocation"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "type": "string"
+              },
+              "recurringEventId": {
+                "type": "string"
+              },
+              "recurrence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["method", "minutes"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["useDefault"],
+                "additionalProperties": false
+              },
+              "created": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "update_event",
+          "title": "Update Event",
+          "description": "Update or move an existing event. Uses PATCH semantics (only provided fields are changed). Inputs: eventId (required), calendarId? (default: 'primary'), targetCalendarId? (moves event if different from calendarId), sendUpdates? ('all'|'externalOnly'|'none', default: 'none'), plus any field to update: summary?, start?, end?, description?, location?, attendees?, addGoogleMeet?, recurrence?, reminders?, visibility?, colorId?.\n\nMOVE BEHAVIOR:\n- If targetCalendarId differs from calendarId, performs Move operation first.\n- Only 'default' events can be moved (not birthday, focusTime, outOfOffice, workingLocation).\n\nPATCH BEHAVIOR:\n- Only sends fields you provide; omitted fields remain unchanged.\n- To clear a field, set it to null or empty string where applicable.\n\nReturns: Updated event object.\nNext: Use 'search_events' to verify changes. Share updated htmlLink if needed.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to update"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "targetCalendarId": {
+                "description": "Move event to this calendar",
+                "type": "string"
+              },
+              "summary": {
+                "description": "New event title",
+                "type": "string"
+              },
+              "start": {
+                "description": "New start time (ISO 8601)",
+                "type": "string"
+              },
+              "end": {
+                "description": "New end time (ISO 8601)",
+                "type": "string"
+              },
+              "description": {
+                "description": "New description",
+                "type": "string"
+              },
+              "location": {
+                "description": "New location",
+                "type": "string"
+              },
+              "attendees": {
+                "description": "New attendee list (replaces existing)",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "email",
+                  "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+              },
+              "addGoogleMeet": {
+                "description": "Add Google Meet link",
+                "type": "boolean"
+              },
+              "recurrence": {
+                "description": "New RRULE array",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "description": "New reminder settings",
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 40320
+                        }
+                      },
+                      "required": ["method", "minutes"]
+                    }
+                  }
+                },
+                "required": ["useDefault"]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "description": "New color ID (1-11)",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              },
+              "timeZone": {
+                "description": "Time zone for datetime values",
+                "type": "string"
+              }
+            },
+            "required": ["eventId"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "dateTime": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "location": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["confirmed", "tentative", "cancelled"]
+              },
+              "htmlLink": {
+                "type": "string"
+              },
+              "hangoutLink": {
+                "type": "string"
+              },
+              "conferenceData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "responseStatus": {
+                      "type": "string",
+                      "enum": ["needsAction", "declined", "tentative", "accepted"]
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    },
+                    "organizer": {
+                      "type": "boolean"
+                    },
+                    "self": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["email"],
+                  "additionalProperties": false
+                }
+              },
+              "organizer": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "self": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "creator": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  }
+                },
+                "required": ["email"],
+                "additionalProperties": false
+              },
+              "eventType": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "birthday",
+                  "focusTime",
+                  "fromGmail",
+                  "outOfOffice",
+                  "workingLocation"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["default", "public", "private", "confidential"]
+              },
+              "colorId": {
+                "type": "string"
+              },
+              "recurringEventId": {
+                "type": "string"
+              },
+              "recurrence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reminders": {
+                "type": "object",
+                "properties": {
+                  "useDefault": {
+                    "type": "boolean"
+                  },
+                  "overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["popup", "email"]
+                        },
+                        "minutes": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["method", "minutes"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["useDefault"],
+                "additionalProperties": false
+              },
+              "created": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        },
+        {
+          "name": "delete_event",
+          "title": "Delete Event",
+          "description": "Delete an event from a calendar. Inputs: eventId (required), calendarId? (default: 'primary'), sendUpdates? ('all'|'externalOnly'|'none', default: 'none').\nBehavior: Permanently removes the event. If it's a recurring event instance, only that instance is deleted. To delete all instances, delete the parent event (use recurringEventId).\nReturns: { success: true }.\nNext: Use 'search_events' to verify deletion.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to delete"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "sendUpdates": {
+                "default": "none",
+                "description": "Notify attendees about the cancellation",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              }
+            },
+            "required": ["eventId"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "calendarId": {
+                "type": "string"
+              }
+            },
+            "required": ["success", "eventId", "calendarId"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": true
+          }
+        },
+        {
+          "name": "respond_to_event",
+          "title": "Respond to Event",
+          "description": "Accept, decline, or tentatively accept an event invitation.\n\nInputs:\n- eventId: string (required) — Event ID from search_events\n- calendarId?: string (default: 'primary') — Calendar where the event appears\n- response: 'accepted' | 'declined' | 'tentative' (required)\n  - 'accepted' = Yes, I'll attend\n  - 'declined' = No, I won't attend  \n  - 'tentative' = Maybe\n- sendUpdates?: 'all' | 'externalOnly' | 'none' (default: 'all')\n\nBehavior: Updates YOUR attendance status for the event. You must be an attendee (invited) to respond.\n\nReturns: Updated event object with your new response status.\n\nNote: This only works for events you were invited to. For events you created yourself, you are the organizer, not an attendee.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "description": "Event ID to respond to"
+              },
+              "calendarId": {
+                "description": "Calendar ID (defaults to \"primary\")",
+                "type": "string"
+              },
+              "response": {
+                "type": "string",
+                "enum": ["accepted", "declined", "tentative"],
+                "description": "Your response: \"accepted\" (yes), \"declined\" (no), or \"tentative\" (maybe)"
+              },
+              "sendUpdates": {
+                "default": "all",
+                "type": "string",
+                "enum": ["all", "externalOnly", "none"]
+              }
+            },
+            "required": ["eventId", "response"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "action": {
+                "type": "string",
+                "const": "respond_to_event"
+              },
+              "response": {
+                "type": "string",
+                "enum": ["accepted", "declined", "tentative"]
+              },
+              "event": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "dateTime": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "dateTime": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["confirmed", "tentative", "cancelled"]
+                  },
+                  "htmlLink": {
+                    "type": "string"
+                  },
+                  "hangoutLink": {
+                    "type": "string"
+                  },
+                  "conferenceData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "attendees": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "responseStatus": {
+                          "type": "string",
+                          "enum": ["needsAction", "declined", "tentative", "accepted"]
+                        },
+                        "optional": {
+                          "type": "boolean"
+                        },
+                        "organizer": {
+                          "type": "boolean"
+                        },
+                        "self": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["email"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "organizer": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "self": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["email"],
+                    "additionalProperties": false
+                  },
+                  "creator": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["email"],
+                    "additionalProperties": false
+                  },
+                  "eventType": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "birthday",
+                      "focusTime",
+                      "fromGmail",
+                      "outOfOffice",
+                      "workingLocation"
+                    ]
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": ["default", "public", "private", "confidential"]
+                  },
+                  "colorId": {
+                    "type": "string"
+                  },
+                  "recurringEventId": {
+                    "type": "string"
+                  },
+                  "recurrence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reminders": {
+                    "type": "object",
+                    "properties": {
+                      "useDefault": {
+                        "type": "boolean"
+                      },
+                      "overrides": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "method": {
+                              "type": "string",
+                              "enum": ["popup", "email"]
+                            },
+                            "minutes": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["method", "minutes"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["useDefault"],
+                    "additionalProperties": false
+                  },
+                  "created": {
+                    "type": "string"
+                  },
+                  "updated": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["ok", "action", "response", "event"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        }
+      ]
+    },
+    "resources/list": {
+      "resources": []
+    },
+    "resources/templates/list": {
+      "resourceTemplates": []
+    },
+    "prompts/list": {
+      "prompts": []
+    },
+    "calls": {
+      "list_calendars": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Found 1 calendar(s):\n\n- Someone (primary) [owner]\n  id: someone@example.com\n  timezone: Europe/Warsaw\n\nNext: Use calendarId in 'search_events', 'create_event', etc."
+          }
+        ],
+        "structuredContent": {
+          "items": [
+            {
+              "id": "someone@example.com",
+              "summary": "Someone",
+              "primary": true,
+              "accessRole": "owner",
+              "timeZone": "Europe/Warsaw",
+              "backgroundColor": "#9fe1e7"
+            }
+          ]
+        }
+      },
+      "check_availability": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Availability check: 2026-10-05T00:00:00Z to 2026-10-06T00:00:00Z\n\n📅 primary: 1 busy slot(s)\n   - 10/5/2026, 9:00:00 AM → 10/5/2026, 10:00:00 AM\n\nTotal: 1 busy slot(s) across all calendars.\nFree times are the gaps between busy slots.\n\nNext: Use 'create_event' to schedule during free times."
+          }
+        ],
+        "structuredContent": {
+          "timeMin": "2026-10-05T00:00:00Z",
+          "timeMax": "2026-10-06T00:00:00Z",
+          "calendars": {
+            "primary": {
+              "busy": [
+                {
+                  "start": "2026-10-05T09:00:00Z",
+                  "end": "2026-10-05T10:00:00Z"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,107 +1,133 @@
 # Google Calendar MCP Server
 
-Fetch-native MCP server for listing calendars, searching and mutating events, responding to invitations, and checking Google Calendar availability. It runs on Bun and Cloudflare Workers and retains the project-specific Google OAuth proxy.
+This server is a remote [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for Google Calendar. A model can use it to list calendars, find events, check free and busy times, create, change, move and delete events, and answer invitations. The server runs on **Cloudflare Workers** and on **Bun**. It uses the [MCP server template](https://github.com/iceener/streamable-mcp-server-template) 2.1 and the official MCP TypeScript SDK 2.3.0.
 
-> This repository targets the prerelease `2026-07-28` MCP candidate with `@modelcontextprotocol/server@2.0.0-beta.5`. It does not claim final conformance until the dated specification and stable packages are published and verified.
+The server URL is the deployed Worker's `MCP_PUBLIC_URL`, for example `https://google-calendar.<subdomain>.workers.dev/mcp`.
+
+The server uses protocol version `2026-07-28`. It also accepts clients that use the 2025 protocol versions.
+
+> [!WARNING]
+> You connect this server to your MCP client at your own risk. A model can make mistakes. Examine what the tools do, and examine the changes in your calendar. The tools can delete events and can send updates to attendees.
 
 ## Tools
 
-- `list_calendars`
-- `search_events`
-- `check_availability`
-- `create_event`
-- `update_event`
-- `delete_event`
-- `respond_to_event`
+| Tool | Function |
+|---|---|
+| `list_calendars` | Lists the calendars of the user, with their IDs, access roles and time zones. |
+| `search_events` | Finds events in all readable calendars (the default), in one calendar, or in a list of calendars. It filters by time range, text and event type. The text match is a substring match on the title, description, location and attendees. |
+| `check_availability` | Shows the busy times of one or more calendars in a time range. |
+| `create_event` | Makes an event from a sentence (Google's quick add) or from fields: title, start, end, attendees, Google Meet, recurrence, reminders. |
+| `update_event` | Changes the given fields of an event. It can also move the event to another calendar. |
+| `delete_event` | Deletes an event. |
+| `respond_to_event` | Sets the user's answer to an invitation: accepted, declined or tentative. |
 
-Existing all-calendar search, local substring matching, event-ID normalization, mutation fallback, free/busy behavior, Google Meet creation, and structured/natural-language event creation are preserved. Every tool advertises a complete Zod 4 input and output schema.
+By default, `create_event`, `update_event` and `delete_event` send no notification to attendees (`sendUpdates: none`). `respond_to_event` notifies everyone (`sendUpdates: all`). If Google cannot find an event under the owner's email address, the server tries again with `primary`.
 
-## Local setup
+## Connect a client
 
-1. Enable Google Calendar API in Google Cloud.
-2. Create a Web OAuth client.
-3. Register `http://127.0.0.1:3001/oauth/callback` as a redirect URI.
-4. Configure and start:
+Use the server URL and the Streamable HTTP transport. The client signs you in with Google the first time.
 
-```bash
-bun install
-cp env.example .env
-# Set PROVIDER_CLIENT_ID, PROVIDER_CLIENT_SECRET, and RS_TOKENS_ENC_KEY.
-bun run dev
+| Client | Procedure |
+|---|---|
+| Claude | In **Settings → Connectors**, add a custom connector with the server URL. |
+| Claude Code | Run `claude mcp add --transport http google-calendar <server URL>`. |
+| MCP Inspector | Run `bun run inspector`. Select **Streamable HTTP**. Enter the server URL. |
+
+Alice and Wonderlands use the same URL.
+
+## Authentication
+
+The server is its own OAuth authorization server, in front of Google's OAuth. MCP clients do not receive Google tokens.
+
+1. The client registers at `/register` and signs the user in at `/authorize`. The client must use PKCE S256.
+2. The server sends the user to Google. Google asks for the two Calendar scopes.
+3. Google returns the user to the server's `/oauth/callback`. The server keeps the Google tokens, encrypted.
+4. The client gets a code, and exchanges the code at `/token` for an access token and a refresh token. These tokens are opaque and have meaning only for this server.
+5. On each MCP request, the server finds the Google token for the access token. If the Google token expires in less than one minute, the server refreshes it first. The tools use the Google token. They do not see the client's token.
+
+For the complete flow, the storage and the redirect rules, refer to [docs/oauth.md](docs/oauth.md).
+
+## Configuration
+
+The deployment settings are in `wrangler.production.jsonc` (Workers; gitignored, with `wrangler.production.example.jsonc` as its shape) or `.env` (Bun). `.env.example` describes all variables.
+
+| Variable | Production value | Function |
+|---|---|---|
+| `MCP_PUBLIC_URL` | `https://google-calendar.<subdomain>.workers.dev/mcp` | The public URL of the MCP endpoint. It is also the resource that tokens are issued for. |
+| `MCP_ALLOWED_HOSTS` | `google-calendar.<subdomain>.workers.dev` | The `Host` headers that the server accepts. |
+| `MCP_ALLOWED_ORIGIN_HOSTNAMES` | The server host, `claude.ai`, `claude.com`, and the hosts of the operator's own browser clients | The browser origins that the server accepts. |
+| `AUTH_MODE` | `oauth` | The server checks the tokens that it issued. |
+| `OAUTH_ISSUER_URL`, `OAUTH_AUTHORIZATION_URL`, `OAUTH_TOKEN_URL`, `OAUTH_REGISTRATION_URL` | This server's origin, `/authorize`, `/token` and `/register` | The authorization server that clients use. The server does not start if they name another server. |
+| `OAUTH_SCOPES` | The two Calendar scopes | The scopes that every MCP request must have. |
+| `PROXY_REDIRECT_ALLOWLIST` | The callbacks of Alice, Claude and the operator's other clients | The client redirect URIs that the proxy accepts, in addition to native loopback URIs. |
+| `MCP_MAX_REQUEST_BYTES` | `1048576` | The largest MCP request body. |
+| `MCP_LEGACY_MODE` | `stateless` | The server also accepts 2025-era clients. |
+
+Secrets:
+
+| Secret | Function |
+|---|---|
+| `PROVIDER_CLIENT_ID` | The server's Google OAuth client ID. |
+| `PROVIDER_CLIENT_SECRET` | The server's Google OAuth client secret. |
+| `TOKENS_ENC_KEY` | 32 random bytes, base64url. The key encrypts the stored tokens. If you change it, all users must sign in again. |
+
+In production, the server does not start without these three secrets. The Google endpoints, the Calendar scopes and the offline-access parameters are constants in `src/services/google-oauth.ts`. For the setup at Google and at Cloudflare, refer to [docs/deploy.md](docs/deploy.md).
+
+## Development
+
+Requirements: [Bun](https://bun.sh) 1.4 or later, and Node.js 22.18 or later.
+
+1. Install the dependencies:
+
+   ```sh
+   bun install
+   ```
+
+2. Copy `.env.example` to `.env`. Set `PROVIDER_CLIENT_ID`, `PROVIDER_CLIENT_SECRET` and `TOKENS_ENC_KEY`. At Google, allow the redirect URI `http://127.0.0.1:3000/oauth/callback`.
+3. Start the server:
+
+   ```sh
+   bun run dev
+   ```
+
+   The server URL is `http://127.0.0.1:3000/mcp`. To use the Cloudflare local runtime, run `bun run dev:worker` (port 8787). Put its secrets in `.dev.vars`.
+
+4. Before you commit, run the checks:
+
+   ```sh
+   bun run check
+   bun run test:smoke
+   ```
+
+`bun run check` does the type check, the lint check and the tests. `bun run test:smoke` starts the real server on Bun and on workerd. It signs in through a Google stand-in on loopback and calls the tools. No test uses the network.
+
+| Script | Function |
+|---|---|
+| `bun run dev` | Starts the server on Bun. |
+| `bun run dev:worker` | Starts the server in the Cloudflare local runtime. |
+| `bun run check` | Type check, lint check, tests, and the check of the generated Worker types. |
+| `bun run test:smoke` | Smoke tests on Bun and on workerd. |
+| `bun run deploy` | Deploys with the gitignored `wrangler.production.jsonc` (`wrangler deploy --config wrangler.production.jsonc`). |
+| `bun run types:worker` | Makes the Worker types again after a change to `wrangler.jsonc`. |
+
+## Project structure
+
+```
+src/
+  server.ts       Identity, Runtime, Deps, and the hooks that connect the OAuth proxy
+  settings.ts     The Google client, the encryption key, the redirect allowlist
+  tools/          One file for each tool; shared/ has schemas and helpers
+  services/       The Google Calendar API client, and google-oauth.ts: Google as the OAuth provider
+  oauth/          The OAuth proxy. It is the same for every provider (docs/oauth.md)
+  platform/       Template code. Do not change it
+  bun.ts          Entry point for Bun: file storage
+  worker.ts       Entry point for Workers: KV and the NativeOAuthAuthority Durable Object
+tests/            Tests for the tools, the proxy and the platform; fixtures from before 1.1.0
+scripts/          Smoke tests and the Google stand-in
 ```
 
-Local endpoints:
-
-- MCP Resource Server: `http://127.0.0.1:3000/mcp`
-- OAuth proxy: `http://127.0.0.1:3001`
-
-## Credential model
-
-Three credentials remain separate:
-
-1. **MCP resource token** — the opaque bearer token accepted by `/mcp`.
-2. **Google access token** — resolved from storage, refreshed when necessary, and exposed to a fresh server only as `AuthInfo.extra.providerAccessToken`.
-3. **Google refresh token** — remains encrypted in file/KV storage and never enters MCP tool context.
-
-Tools never read or forward `authInfo.token`. Token-separation tests use visibly different MCP and Google tokens and assert that only the Google token reaches the provider mock.
-
-## OAuth proxy
-
-The active proxy retains PKCE authorization, callback exchange, refresh, revocation, registration, redirect allowlists, and RS-to-Google token mappings.
-
-Discovery endpoints:
-
-- `/.well-known/oauth-protected-resource/mcp`
-- `/.well-known/oauth-authorization-server`
-
-Proxy endpoints:
-
-- `GET /authorize`
-- `GET /oauth/callback`
-- `POST /token`
-- `POST /revoke`
-- `POST /register`
-
-On Bun the proxy runs at `OAUTH_ISSUER_URL` (port 3001 by default). On Workers it is mounted outside `/mcp` on the same isolate.
-
-## Cloudflare Workers
-
-Create KV and update its ID in `wrangler.jsonc`:
-
-```bash
-bun run kv:create
-bun x wrangler secret put PROVIDER_CLIENT_ID --config wrangler.jsonc
-bun x wrangler secret put PROVIDER_CLIENT_SECRET --config wrangler.jsonc
-bun x wrangler secret put RS_TOKENS_ENC_KEY --config wrangler.jsonc
-bun run deploy
-```
-
-Before deployment, set HTTPS values for `MCP_PUBLIC_URL`, `OAUTH_ISSUER_URL`, `OAUTH_REDIRECT_URI`, Host/Origin allowlists, and the Google redirect URI. `RS_TOKENS_ENC_KEY` must be a base64url-encoded 32-byte key.
-
-## Protocol and HTTP behavior
-
-- One deployment-scoped fetch handler and a fresh `McpServer` per request
-- Modern protocol pinned to candidate `2026-07-28`
-- SDK stateless fallback for legacy `2025-11-25` clients
-- `GET /mcp` and `DELETE /mcp` return `405`; no MCP session storage is used
-- SDK-owned negotiation, header mismatch, cancellation, and transport errors
-- Bounded MCP request bodies, strict Host/Origin checks, and allowlisted CORS headers
-- Missing/invalid resource tokens return `401`; missing Google scopes return `403`
-
-## Validate
-
-```bash
-bun test
-bun run typecheck
-bun run lint
-bun run format:check
-bun run build
-bun run build:worker
-bun run types:worker:check
-```
-
-Provider tests use mocks. A live OAuth flow requires Google credentials, user consent, and redirect URIs configured in Google Cloud.
+For the template's concepts (the request path, `defineTool`, the error policy, the configuration checks), refer to the [template documentation](https://github.com/iceener/streamable-mcp-server-template#documentation).
 
 ## License
 
-MIT
+[MIT](LICENSE)
